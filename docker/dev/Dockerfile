@@ -8,6 +8,10 @@ RUN apt-get update && apt-get install -y \
     git \
     nano \
     vim \
+    python3-pip \
+    iputils-ping \
+    curl \
+    tmux \
     python3-colcon-common-extensions \
     ros-jazzy-navigation2 \
     ros-jazzy-nav2-bringup \
@@ -16,6 +20,9 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-tf2-ros \
     ros-jazzy-micro-ros-agent \
     && rm -rf /var/lib/apt/lists/*
+
+RUN rosdep init || true
+RUN rosdep update
 
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
 
