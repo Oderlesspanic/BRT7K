@@ -1,5 +1,7 @@
 # BRT7K
+## Description
 Mobileroboticprojet 2
+## Features
 
 ## Installation
 
@@ -15,7 +17,7 @@ cd BRT7K
 docker compose build
 ```
 
-### Usage
+## Usage
 
 ```bash
 docker compose run --rm ros2-dev
@@ -41,3 +43,64 @@ ros2 pkg create --build-type ament_cmake <PACKAGE_NAME>
 ```bash
 ros2 pkg create --build-type ament_python <PACKAGE_NAME>
 ```
+
+## Tests
+
+## Work together
+Please don't work at main branch.
+Create a new branch for every new feature or if you change an existing, working feature.
+Don't work at the same branch with an other simultaneous.
+
+### Create feature branch
+#### 1. Pull current status
+```bash
+git checkout main
+git pull origin main
+```
+
+#### 2. Check existing branches
+```bash
+git branch
+```
+Switch to existing branch
+```bash
+git switch <branch_name>
+```
+
+#### 3. Create a new branch 
+for every new feature or if you change an existing, working feature.
+VSCode: Source Control -> Changes -> ... -> Branch -> Create Branch -> <meaningful_branch_name>
+
+```bash
+git switch -c <meaningful_branch_name>
+```
+Check changes
+```bash
+git status
+```
+
+### commit changes
+#### 1. prepare commit
+Add all changed files to commit
+```bash 
+git add .
+```
+or 
+```bash
+git add <filename1.end> <filename2.end>
+```
+Check for added files
+```bash
+git status
+```
+
+#### 2. commit
+```bash
+git commit -m "Message"
+```
+#### 3. push commit
+```bash
+git push -u origin <branch_name>
+```
+
+### Pull request
