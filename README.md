@@ -57,6 +57,10 @@ Don't work at the same branch with an other simultaneous.
 git checkout main
 git pull origin main
 ```
+fetch all existing branches
+```bash
+git fetch --all
+```
 
 #### 2. Check existing branches
 ```bash
