@@ -1,0 +1,7 @@
+imu:
+  ros__parameters:
+    frame_id: "imu_link"
+    publish_rate: 50.0
+    device_address: 104
+    accel_scale: 16384.0
+    gyro_scale: 131.0
