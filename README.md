@@ -44,8 +44,6 @@ ros2 pkg create --build-type ament_cmake <PACKAGE_NAME>
 ros2 pkg create --build-type ament_python <PACKAGE_NAME>
 ```
 
-## Tests
-
 ## Work together
 Please don't work at main branch.
 Create a new branch for every new feature or if you change an existing, working feature.
