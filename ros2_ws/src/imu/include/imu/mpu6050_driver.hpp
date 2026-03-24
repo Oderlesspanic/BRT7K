@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #include "imu/i2c_bus.hpp"
-
+#include "imu/mpu6050_config.hpp"
 
 struct ImuRawData {
     int16_t accel_x;
@@ -17,12 +17,17 @@ struct ImuRawData {
     int16_t gyro_z;
 };
 
-class MPU6050Driver {
-public:
-    explicit MPU6050Driver(std::shared_ptr<II2CBus> bus);
 
-    std::optional<ImuRawData> read_imu();
+class MPU6050Driver
+{
+public:
+    explicit MPU6050Driver(const MPU6050Config& config);
+
+    bool initialize();
+    bool read_raw_data(int16_t& ax, int16_t& ay, int16_t& az,
+                       int16_t& gx, int16_t& gy, int16_t& gz);
 
 private:
-    std::shared_ptr<II2CBus> bus_;
+    MPU6050Config config_;
+    int fd_;
 };
