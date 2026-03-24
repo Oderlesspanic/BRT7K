@@ -15,16 +15,19 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(ament_cmake_gtest REQUIRED)
-
+find_package(GTest REQUIRED)
 
 add_library(${PROJECT_NAME}_lib
   src/imu_converter.cpp
   src/mpu6050_driver.cpp
   src/mpu6050_node.cpp
+  src/linux_i2c_bus.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/test>
   $<INSTALL_INTERFACE:include>
 )
 
@@ -75,59 +78,6 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-add_library(${PROJECT_NAME}_lib
-  src/imu_converter.cpp
-  src/mpu6050_driver.cpp
-  src/mpu6050_node.cpp
-)
-
-target_include_directories(${PROJECT_NAME}_lib PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-
-ament_target_dependencies(${PROJECT_NAME}_lib
-  rclcpp
-  sensor_msgs
-  std_msgs
-  geometry_msgs
-)
-
-add_executable(${PROJECT_NAME}_node
-  src/main.cpp
-)
-
-target_link_libraries(${PROJECT_NAME}_node
-  ${PROJECT_NAME}_lib
-)
-
-ament_target_dependencies(${PROJECT_NAME}_node
-  rclcpp
-  sensor_msgs
-  std_msgs
-  geometry_msgs
-)
-
-install(
-  TARGETS
-    ${PROJECT_NAME}_lib
-    ${PROJECT_NAME}_node
-  EXPORT export_${PROJECT_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
-)
-
-
-install(
-  DIRECTORY config
-  DESTINATION share/${PROJECT_NAME}
-)
-
-install(
-  DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}
-)
 if(BUILD_TESTING)
 
   ament_add_gtest(test_imu_converter
@@ -150,7 +100,10 @@ if(BUILD_TESTING)
   )
   if(TARGET test_mpu6050_driver)
     target_link_libraries(test_mpu6050_driver
+      GTest::gtest
+      GTest::gmock
       ${PROJECT_NAME}_lib
+      
     )
     ament_target_dependencies(test_mpu6050_driver
       rclcpp
@@ -174,6 +127,7 @@ if(BUILD_TESTING)
       geometry_msgs
     )
   endif()
+
 endif()
 
 ament_export_include_directories(include)
