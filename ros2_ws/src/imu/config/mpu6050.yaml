@@ -2,7 +2,7 @@ imu:
   ros__parameters:
     frame_id: "imu_link"
     publish_rate: 50.0
-    device_address: 104
+    device_address: 0x68
     accel_scale: 16384.0
     gyro_scale: 131.0
     angular_velocity_covariance: [0.01, 0.0, 0.0,
