@@ -5,3 +5,14 @@ imu:
     device_address: 104
     accel_scale: 16384.0
     gyro_scale: 131.0
+    angular_velocity_covariance: [0.01, 0.0, 0.0,
+                                  0.0, 0.01, 0.0,
+                                  0.0, 0.0, 0.01]
+
+    linear_acceleration_covariance: [0.04, 0.0, 0.0,
+                                     0.0, 0.04, 0.0,
+                                     0.0, 0.0, 0.04]
+
+    orientation_covariance: [-1.0, 0.0, 0.0,
+                             0.0, 0.0, 0.0,
+                             0.0, 0.0, 0.0]

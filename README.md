@@ -28,7 +28,17 @@ and
 colcon build
 source install/setup.bash
 ```
+or build only one package
+```bash
+colcon build --packages-select <package_name>
+source install/setup.bash
+```
 
+or clean build one package
+```bash
+colcon build --packages-select <package_name> --cmake-clean-cache
+source install/setup.bash
+```
 ### Navigation
 
 linux like with 
