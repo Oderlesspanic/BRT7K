@@ -54,8 +54,6 @@ ros2 pkg create --build-type ament_cmake <PACKAGE_NAME>
 ros2 pkg create --build-type ament_python <PACKAGE_NAME>
 ```
 
-## Tests
-
 ## Work together
 Please don't work at main branch.
 Create a new branch for every new feature or if you change an existing, working feature.
@@ -66,6 +64,10 @@ Don't work at the same branch with an other simultaneous.
 ```bash
 git checkout main
 git pull origin main
+```
+fetch all existing branches
+```bash
+git fetch --all
 ```
 
 #### 2. Check existing branches
@@ -115,33 +117,33 @@ git push -u origin <branch_name>
 
 ### Pull request
 
-
-
 ## Unit test
-gtest is include in ROS2 Jazzy
+gtest is included in ROS2 Jazzy
 
-### package file
+### Add
+#### package file
 ```xml
 <test_depend>ament_cmake_gtest</test_depend>
 ```
-
-### Cmake file 
-add
+#### Cmake file
 ```Cmake
 find_package(ament_cmake_gtest REQUIRED)
 
-ament_add_gtest(<test_name>
-    <path_to_test_filename.cpp>
+if(BUILD_TESTING)
+
+  ament_add_gtest(<test_name>
+    <path_to_test_file.cpp>
   )
   if(TARGET <test_name>)
     target_link_libraries(<test_name>
       ${PROJECT_NAME}_lib
     )
-    ament_target_dependencies(<testname>
+    ament_target_dependencies(<test_name>
+
     )
   endif()
+endif()
 ```
-
 
 ### Usage
 ```bash
@@ -149,7 +151,6 @@ colcon test --packages-select <package_name> --event-handlers console_direct+
 colcon test-result --verbose
 ```
 
-### test file
+### Test C++ file
 ```cpp
-
 ```
