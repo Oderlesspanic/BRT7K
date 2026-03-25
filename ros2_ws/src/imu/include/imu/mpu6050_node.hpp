@@ -1,11 +1,13 @@
 #pragma once
 
 #include <memory>
+
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 
-#include "mpu6050_config.hpp"
-#include "mpu6050_driver.hpp"
+#include "imu/mpu6050_config.hpp"
+#include "imu/mpu6050_driver.hpp"
+#include "imu/i2c_bus.hpp"
 
 class MPU6050Node : public rclcpp::Node
 {
@@ -22,4 +24,6 @@ private:
 
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
+
+    bool initialized_;
 };
