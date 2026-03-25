@@ -1,10 +1,16 @@
-imu:
+mpu6050_node:
   ros__parameters:
-    frame_id: "imu_link"
-    publish_rate: 50.0
-    device_address: 0x68
+    # I2C 
+    i2c_bus: "/dev/i2c-1"
+    i2c_address: 104
+    # Sensor configuration
     accel_scale: 16384.0
     gyro_scale: 131.0
+    # Frame
+    frame_id: "imu_link"
+    # Update rate
+    update_rate: 100.0
+    # Noise covariance
     angular_velocity_covariance: [0.01, 0.0, 0.0,
                                   0.0, 0.01, 0.0,
                                   0.0, 0.0, 0.01]
@@ -16,3 +22,12 @@ imu:
     orientation_covariance: [-1.0, 0.0, 0.0,
                              0.0, 0.0, 0.0,
                              0.0, 0.0, 0.0]
+
+    # Offset
+    accel_offset_x: 0.0
+    accel_offset_y: 0.0
+    accel_offset_z: 0.0
+
+    gyro_offset_x: 0.0
+    gyro_offset_y: 0.0
+    gyro_offset_z: 0.0

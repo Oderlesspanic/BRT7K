@@ -1,14 +1,14 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <vector>
-#include <cstdint>
 
 #include "imu/i2c_bus.hpp"
+#include "imu/mpu6050_config.hpp"
 
-
-struct ImuRawData {
+struct ImuRawData
+{
     int16_t accel_x;
     int16_t accel_y;
     int16_t accel_z;
@@ -17,12 +17,20 @@ struct ImuRawData {
     int16_t gyro_z;
 };
 
-class MPU6050Driver {
+class MPU6050Driver
+{
 public:
-    explicit MPU6050Driver(std::shared_ptr<II2CBus> bus);
+    MPU6050Driver(std::shared_ptr<I2CBus> bus, const MPU6050Config& config);
 
+    bool initialize();
     std::optional<ImuRawData> read_imu();
 
 private:
-    std::shared_ptr<II2CBus> bus_;
+    static constexpr uint8_t REG_PWR_MGMT_1    = 0x6B;
+    static constexpr uint8_t REG_ACCEL_CONFIG  = 0x1C;
+    static constexpr uint8_t REG_GYRO_CONFIG   = 0x1B;
+    static constexpr uint8_t REG_ACCEL_XOUT_H  = 0x3B;
+
+    std::shared_ptr<I2CBus> bus_;
+    MPU6050Config config_;
 };
