@@ -1,0 +1,24 @@
+ekf_node:
+  ros_parameter:
+    frequency: 30.0
+    two_d_mode: true
+    publish_acceleration: true
+    publish_tf: true
+    map_frame: "map"
+    odom_frame: "odom"
+    base_link_frame: "base_link"
+    world_frame: "odom"
+
+    odom0: odom/data_raw
+    odom0_config:[false, false, false,
+                  false, false, false,
+                  true, true, false,
+                  false, false, false,
+                  true, true, flase]
+
+    imu0: "imu/data_raw"
+    imu0_conifg[false, false, false,
+                false, false, false,
+                false, false, fasle,
+                false, fasle, true,
+                true, true, false]
