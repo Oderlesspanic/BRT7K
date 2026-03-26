@@ -39,6 +39,11 @@ or clean build one package
 colcon build --packages-select <package_name> --cmake-clean-cache
 source install/setup.bash
 ```
+
+for second terminal in container use
+```bash
+docker exec -it <full_container_name> bash
+```
 ### Navigation
 
 linux like with 
