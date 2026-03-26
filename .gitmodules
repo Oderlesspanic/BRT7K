@@ -1,0 +1,6 @@
+[submodule "ros2_ws/src/micro_ros_setup"]
+	path = ros2_ws/src/micro_ros_setup
+	url = https://github.com/micro-ROS/micro_ros_setup.git
+[submodule "ros2_ws/src/sllidar_ros2"]
+	path = ros2_ws/src/sllidar_ros2
+	url = https://github.com/Slamtec/sllidar_ros2.git
