@@ -9,6 +9,7 @@ Pull repository with VSCode or terminal.
 
 ```bash
 git clone https://github.com/Oderlesspanic/BRT7K.git
+git submodule update --init --recursive
 ```
 ### Bulid
 
@@ -50,6 +51,16 @@ linux like with
 ```bash
 cd /ros2_ws/src
 ```
+
+### Update submodules
+```bash
+cd <path_to_submodule>
+git pull
+
+git add <path_to_submodule>
+git commit -m "update <submodule>"
+```
+
 ### Create ROS2 C++ package
 ```bash
 ros2 pkg create --build-type ament_cmake <PACKAGE_NAME>
