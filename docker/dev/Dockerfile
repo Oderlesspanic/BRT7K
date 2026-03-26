@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     tmux \
     python3-colcon-common-extensions \
+    ros-jazzy-xacro \
+    ros-jazzy-robot-localization \
     ros-jazzy-navigation2 \
     ros-jazzy-nav2-bringup \
     ros-jazzy-slam-toolbox \
