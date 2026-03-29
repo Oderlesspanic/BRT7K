@@ -4,14 +4,19 @@
   <!-- =========================
        Parameter
   ========================== -->
+
+  <xacro:arg name="wheel_radius" default="0.0745"/>
+  <xacro:arg name="wheel_width" default="0.02"/>
+  <xacro:arg name="wheel_y" default="0.11"/>
+
   <xacro:property name="base_length" value="0.30"/>
   <xacro:property name="base_width"  value="0.20"/>
   <xacro:property name="base_height" value="0.08"/>
 
-  <xacro:property name="wheel_radius" value="0.05"/>
-  <xacro:property name="wheel_width"  value="0.02"/>
+  <xacro:property name="wheel_radius" value="$(arg wheel_radius)"/>
+  <xacro:property name="wheel_width"  value="$(arg wheel_width)"/>
   <xacro:property name="wheel_x"      value="0.0"/>
-  <xacro:property name="wheel_y"      value="0.11"/>
+  <xacro:property name="wheel_y"      value="$(arg wheel_y)"/>
   <xacro:property name="wheel_z"      value="-0.05"/>
 
   <!-- Sensorpositionen -->
