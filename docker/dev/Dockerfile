@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     tmux \
     python3-colcon-common-extensions \
     ros-jazzy-xacro \
+    ros-jazzy-imu-filter-madgwick \
     ros-jazzy-robot-localization \
     ros-jazzy-navigation2 \
     ros-jazzy-nav2-bringup \

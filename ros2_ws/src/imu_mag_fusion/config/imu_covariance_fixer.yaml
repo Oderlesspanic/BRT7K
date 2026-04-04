@@ -1,0 +1,18 @@
+imu_covariance_fixer:
+  ros__parameters:
+    input_topic: /imu/data
+    output_topic: /imu/data_fixed
+
+    angular_velocity_covariance: [0.01, 0.0, 0.0,
+                                  0.0, 0.01, 0.0,
+                                  0.0, 0.0, 0.01]
+
+    linear_acceleration_covariance: [0.04, 0.0, 0.0,
+                                     0.0, 0.04, 0.0,
+                                     0.0, 0.0, 0.04]
+
+    overwrite_orientation_covariance: false
+
+    orientation_covariance: [0.0025, 0.0, 0.0,
+                             0.0, 0.0025, 0.0,
+                             0.0, 0.0, 0.0025]
