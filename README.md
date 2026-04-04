@@ -1,6 +1,6 @@
 # BRT7K
 ## Description
-Mobileroboticprojet 2
+Mobileroboticproject 2
 ## Features
 
 ## Installation

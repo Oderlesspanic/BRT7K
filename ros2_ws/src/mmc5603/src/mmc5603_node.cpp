@@ -26,7 +26,7 @@ MMC5603Node::MMC5603Node() : Node("mmc5603_node") {
     driver_ = std::make_shared<MMC5603Driver>(bus_);
     driver_->initialize();
 
-    mag_pub_ = this->create_publisher<sensor_msgs::msg::MagneticField>("mag", 10);
+    mag_pub_ = this->create_publisher<sensor_msgs::msg::MagneticField>("mag/data_raw", 10);
 
     timer_ = this->create_wall_timer(
         std::chrono::milliseconds((int)(1000.0 / rate)),
