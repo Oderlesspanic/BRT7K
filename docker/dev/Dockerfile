@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-slam-toolbox \
     ros-jazzy-tf2 \
     ros-jazzy-tf2-ros \
+    ros-jazzy-camera-ros \
     libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
 
