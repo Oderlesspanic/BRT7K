@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-tf2 \
     ros-jazzy-tf2-ros \
     ros-jazzy-camera-ros \
+    ros-jazzy-cv-bridge \
+    ros-jazzy-vision-opencv \
     libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
 
