@@ -97,7 +97,6 @@ git switch <branch_name>
 
 #### 3. Create a new branch 
 for every new feature or if you change an existing, working feature.
-VSCode: Source Control -> Changes -> ... -> Branch -> Create Branch -> <meaningful_branch_name>
 
 ```bash
 git switch -c <meaningful_branch_name>

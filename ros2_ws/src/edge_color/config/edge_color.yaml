@@ -1,0 +1,54 @@
+color_edge_detection_node:
+  ros__parameters:
+    
+    image_topic: /camera/image_raw
+    camera_info_topic: /camera/camera_info
+
+    
+    debug_view: true
+    publish_debug_image: true
+
+    # Mindestgröße für erkannte Flächen (Pixel)
+    min_contour_area: 800.0
+
+    saturation_min: 80
+    value_min: 60
+
+color_edge_mapper_node:
+  ros__parameters:
+    input_topic: /color_patches/detected
+    output_topic: /color_patches/mapped
+    camera_info_topic: /camera/camera_info
+
+    camera_frame: camera_optical_link
+    map_frame: map
+
+    ground_z: 0.0
+    min_projection_distance: 0.1
+    max_projection_distance: 5.0
+    publish_debug_markers: true
+
+
+semantic_color_edge_map_manager_node:
+  ros__parameters:
+    input_topic: /color_patches/mapped
+    output_topic: /color_edge/managed_json
+
+    merge_distance: 0.20
+    max_reacquire_distance_factor: 2.5
+
+    save_to_file: true
+    save_path: /tmp/color_edge_map.json
+
+    max_objects: 100
+    forget_after_time: false
+    forget_after_seconds: 300.0
+
+    print_updates: true
+
+    use_hue_for_merge: true
+    max_hue_distance: 10.0
+    min_s_for_hue_match: 40.0
+
+    use_map_area_for_merge: true
+    max_area_relative_difference: 0.35
