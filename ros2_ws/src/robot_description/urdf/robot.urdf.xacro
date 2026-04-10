@@ -5,24 +5,24 @@
        Parameter
   ========================== -->
 
-  <xacro:arg name="wheel_radius" default="0.0745"/>
-  <xacro:arg name="wheel_width" default="0.02"/>
-  <xacro:arg name="wheel_y" default="0.11"/>
+  <xacro:arg name="wheel_radius" default="0.03656"/> <!-- passt -->
+  <xacro:arg name="wheel_width" default="0.0171"/> <!-- passt -->
+  <xacro:arg name="wheel_y" default="0.1606"/> <!-- passt -->
 
-  <xacro:property name="base_length" value="0.30"/>
-  <xacro:property name="base_width"  value="0.20"/>
-  <xacro:property name="base_height" value="0.08"/>
+  <xacro:property name="base_length" value="0.425"/> <!-- passt -->
+  <xacro:property name="base_width"  value="0.389"/> <!-- passt -->
+  <xacro:property name="base_height" value="0.004"/> <!-- passt -->
 
   <xacro:property name="wheel_radius" value="$(arg wheel_radius)"/>
   <xacro:property name="wheel_width"  value="$(arg wheel_width)"/>
-  <xacro:property name="wheel_x"      value="0.0"/>
+  <xacro:property name="wheel_x"      value="0.0"/>    <!-- passt -->
   <xacro:property name="wheel_y"      value="$(arg wheel_y)"/>
-  <xacro:property name="wheel_z"      value="-0.05"/>
+  <xacro:property name="wheel_z"      value="0.0252"/> <!-- passt -->
 
   <!-- Sensorpositionen -->
-  <xacro:property name="laser_x" value="0.12"/>
-  <xacro:property name="laser_y" value="0.0"/>
-  <xacro:property name="laser_z" value="0.12"/>
+  <xacro:property name="laser_x" value="0.05175"/> <!-- passt -->
+  <xacro:property name="laser_y" value="0.0"/> <!-- passt -->
+  <xacro:property name="laser_z" value="0.319"/> <!-- passt -->
 
   <xacro:property name="imu_x" value="0.0"/>
   <xacro:property name="imu_y" value="0.0"/>
@@ -32,9 +32,10 @@
   <xacro:property name="mag_y" value="0.0"/>
   <xacro:property name="mag_z" value="0.04"/>
 
-  <xacro:property name="camera_x" value="0.14"/>
-  <xacro:property name="camera_y" value="0.0"/>
-  <xacro:property name="camera_z" value="0.16"/>
+  <xacro:property name="camera_x" value="-0.03172"/> <!-- passt -->
+  <xacro:property name="camera_y" value="0.0"/> <!-- passt -->
+  <xacro:property name="camera_z" value="0.2402"/> <!-- passt -->
+  <xarco:property name="camera_p" value="0.3562"/> <!-- passt 20.41° -->
 
   <!-- =========================
        Farben
@@ -66,6 +67,7 @@
 
     <!-- 
     <visual>
+      <origin xyz="-0.003435 -0.000615 0" rpy="0 0 1.57079632679" /> passt
       <geometry>
         <mesh filename="package://robot_description/meshes/base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -82,9 +84,9 @@
 
    <!-- linker U-Schenkel -->
   <collision>
-    <origin xyz="0.10 0.12 0.05" rpy="0 0 0"/>
+    <origin xyz="0.10 0.12 0.05" rpy="0 0 0"/> 
     <geometry>
-      <box size="0.40 0.04 0.10"/>
+      <box size="0.125 0.075 0.10"/> <!-- passt -->
     </geometry>
   </collision>
 
@@ -92,7 +94,7 @@
   <collision>
     <origin xyz="0.10 -0.12 0.05" rpy="0 0 0"/>
     <geometry>
-      <box size="0.40 0.04 0.10"/>
+      <box size="0.125 0.075 0.10"/> <!-- passt -->
     </geometry>
   </collision>
 
@@ -100,7 +102,7 @@
   <collision>
     <origin xyz="-0.10 0.0 0.05" rpy="0 0 0"/>
     <geometry>
-      <box size="0.08 0.28 0.10"/>
+      <box size="0.315 0.390 0.10"/> <!-- passt -->
     </geometry>
   </collision>
 </link>
@@ -143,7 +145,7 @@
   ========================== -->
   <link name="laser_link">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 0.305" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.03" length="0.04"/>
       </geometry>
@@ -211,7 +213,7 @@
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child link="camera_link"/>
-    <origin xyz="${camera_x} ${camera_y} ${camera_z}" rpy="0 0 0"/>
+    <origin xyz="${camera_x} ${camera_y} ${camera_z}" rpy="0 ${camera_p} 0"/>
   </joint>
 
   <!-- Optischer Kamerarahmen -->
