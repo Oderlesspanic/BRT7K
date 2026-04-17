@@ -9,6 +9,11 @@
   <xacro:arg name="wheel_width" default="0.0171"/> <!-- passt -->
   <xacro:arg name="wheel_y" default="0.1606"/> <!-- passt -->
 
+  <xacro:arg name="gripper_x" default="0.3"/>
+  <xacro:arg name="gripper_y" default="0.2"/>
+  <xacro:arg name="gripper_z" default="0.1"/>
+  <xacro:arg name="gripper_yaw" default="0.0"/>
+
   <xacro:property name="base_length" value="0.425"/> <!-- passt -->
   <xacro:property name="base_width"  value="0.389"/> <!-- passt -->
   <xacro:property name="base_height" value="0.004"/> <!-- passt -->
@@ -18,6 +23,14 @@
   <xacro:property name="wheel_x"      value="0.0"/>    <!-- passt -->
   <xacro:property name="wheel_y"      value="$(arg wheel_y)"/>
   <xacro:property name="wheel_z"      value="0.0252"/> <!-- passt -->
+
+  <xacro:property name="gripper_x" value="$(arg gripper_x)"/>
+  <xacro:property name="gripper_y" value="$(arg gripper_y)"/>
+  <xacro:property name="gripper_z" value="$(arg gripper_z)"/>
+  <xacro:property name="gripper_yaw" value="$(arg gripper_yaw)"/>
+  <xacro:property name="gripper_length" value="0.1"/>
+  <xacro:property name="gripper_width" value="0.1"/>
+  <xacro:property name="gripper_height" value="0.1"/>
 
   <!-- Sensorpositionen -->
   <xacro:property name="laser_x" value="0.05175"/> <!-- passt -->
@@ -35,7 +48,7 @@
   <xacro:property name="camera_x" value="-0.03172"/> <!-- passt -->
   <xacro:property name="camera_y" value="0.0"/> <!-- passt -->
   <xacro:property name="camera_z" value="0.2402"/> <!-- passt -->
-  <xarco:property name="camera_p" value="0.3562"/> <!-- passt 20.41° -->
+  <xacro:property name="camera_p" value="0.3562"/> <!-- passt 20.41° -->
 
   <!-- =========================
        Farben
@@ -140,12 +153,56 @@
   <xacro:wheel name="left_wheel_link"  x="${wheel_x}" y="${wheel_y}"  z="${wheel_z}"/>
   <xacro:wheel name="right_wheel_link" x="${wheel_x}" y="-${wheel_y}" z="${wheel_z}"/>
 
+<!-- =========================
+       Gripper Macro
+  ========================== -->
+
+  <xacro:macro name="gripper" params="name x y z yaw">
+    <link name="${name}">
+      <visual>
+        <origin xyz="${gripper_length/2.0} 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${gripper_length} ${gripper_width} ${gripper_height}"/>
+        </geometry>
+        <material name="black"/>
+      </visual>
+
+      <!-- 
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://robot_description/meshes/base.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="black"/>
+      </visual>
+    -->
+      <collision>
+        <origin xyz="${gripper_length/2.0} 0 0" rpy="0 0 0"/> 
+        <geometry>
+          <box size="${gripper_length} ${gripper_width} ${gripper_height}"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${name}_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="0" upper="3.145" effort="1.0" velocity="1.0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Greifer -->
+  <xacro:gripper name="left_gripper_link" x="${gripper_x}" y="${gripper_y}" z="${gripper_z}" yaw="${gripper_yaw}"/>
+  <xacro:gripper name="right_gripper_link" x="${gripper_x}" y="-${gripper_y}" z="${gripper_z}" yaw="-${gripper_yaw}"/>
+
   <!-- =========================
        LiDAR
   ========================== -->
   <link name="laser_link">
     <visual>
-      <origin xyz="0 0 0.305" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.03" length="0.04"/>
       </geometry>
