@@ -1,0 +1,12 @@
+room_vision_detector:
+  ros__parameters:
+    input_topic: "/camera/image_raw"
+    image_output_topic: "/room_vision/image_annotated"
+    detections_topic: "/room_vision/detections"
+    input_size: 640
+    confidence_threshold: 0.25
+    nms_threshold: 0.45
+    class_names: ["wurfel", "ball", "mate", "fhgr_logo"]
+    # model_path leer lassen -> Default aus ament_index (share/room_vision/models/best.onnx)
+    # Bei Bedarf absoluten Pfad setzen, z.B.:
+    # model_path: "/home/pi/ros2_ws/src/room_vision/models/best.onnx"
