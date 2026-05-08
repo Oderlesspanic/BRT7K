@@ -1,0 +1,5 @@
+frontier_explorer_node:
+  ros__parameters:
+    map_topic: "/map"
+    action_name: "navigate_to_pose"
+    explore_period: 2.0
