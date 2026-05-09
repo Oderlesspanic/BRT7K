@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     tmux \
     python3-colcon-common-extensions \
+    ros-dev-tools \
     ros-jazzy-xacro \
     ros-jazzy-imu-filter-madgwick \
     ros-jazzy-robot-localization \
@@ -24,6 +25,13 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-camera-ros \
     ros-jazzy-cv-bridge \
     ros-jazzy-vision-opencv \
+    ros-jazzy-image-transport \
+    ros-jazzy-tf-transformations \
+    ros-jazzy-micro-ros-agent \
+    ros-jazzy-laser-filters \
+    ros-jazzy-message-filters \
+    ros-jazzy-vision-msgs \
+    ros-jazzy-image-pipeline \
     libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
 
