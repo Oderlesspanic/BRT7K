@@ -1,0 +1,54 @@
+object_localizer_node:
+  ros__parameters:
+    target_frame: "map"
+    camera_frame: "camera_link"
+
+    # Bodenhöhe im target_frame
+    ground_z: 0.0
+
+    objects:
+      default:
+        size_x: 0.10
+        size_y: 0.10
+        size_z: 0.10
+        offset_x: 0.0
+        offset_y: 0.0
+
+      # Rubik's Cube / Würfel
+      rubixcube:
+        size_x: 0.057
+        size_y: 0.057
+        size_z: 0.057
+        offset_x: 0.0
+        offset_y: 0.0
+
+      wurfel:
+        size_x: 0.057
+        size_y: 0.057
+        size_z: 0.057
+        offset_x: 0.0
+        offset_y: 0.0
+
+      # Getränkedose / Mate
+      mate:
+        size_x: 0.066
+        size_y: 0.066
+        size_z: 0.115
+        offset_x: 0.0
+        offset_y: 0.0
+
+      # Handball
+      ball:
+        size_x: 0.190
+        size_y: 0.190
+        size_z: 0.190
+        offset_x: 0.0
+        offset_y: 0.0
+
+      # fhgr_logo
+      fhgr_logo:
+        size_x: 0.057
+        size_y: 0.057
+        size_z: 0.057
+        offset_x: 0.0
+        offset_y: 0.0

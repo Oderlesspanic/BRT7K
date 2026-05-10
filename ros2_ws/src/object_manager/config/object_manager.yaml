@@ -1,0 +1,11 @@
+object_manager_node:
+  ros__parameters:
+    map_frame: "map"
+
+    # Wenn ein neues Objekt derselben Klasse näher als dieser Abstand ist,
+    # wird es als dasselbe Objekt behandelt.
+    merge_distance: 0.20
+
+    # Abstand der Punkte innerhalb der Objektfläche für /object_obstacles.
+    # Kleiner = dichtere Hinderniswolke, aber mehr Punkte.
+    obstacle_point_spacing: 0.04
