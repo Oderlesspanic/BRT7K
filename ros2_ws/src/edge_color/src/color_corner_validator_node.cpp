@@ -129,7 +129,6 @@ void ColorCornerValidatorNode::publish_json(
     oss << "    {\n";
     oss << "      \"corner_id\": \"" << c.corner_id << "\",\n";
     oss << "      \"wall_id\": \"" << c.wall_id << "\",\n";
-    oss << "      \"color_name\": \"" << c.color_name << "\",\n";
     oss << "      \"center_map\": {\n";
     oss << "        \"x\": " << c.center_map.x << ",\n";
     oss << "        \"y\": " << c.center_map.y << ",\n";

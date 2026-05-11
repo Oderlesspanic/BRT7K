@@ -1,0 +1,48 @@
+hardware_supervisor:
+  ros__parameters:
+
+    update_rate_hz: 2.0
+
+    devices:
+
+      esp32_drive:
+        type: usb_topic
+        device: "/dev/serial/by-id/esp32_drive"
+        heartbeat_topic: "/esp32_drive/heartbeat"
+        timeout: 2.0
+
+      esp32_gripper:
+        type: usb_topic
+        device: "/dev/serial/by-id/esp32_gripper"
+        heartbeat_topic: "/esp32_gripper/heartbeat"
+        timeout: 2.0
+
+      esp32_monitor:
+        type: usb_topic
+        device: "/dev/serial/by-id/esp32_monitor"
+        heartbeat_topic: "/esp32_monitor/heartbeat"
+        timeout: 2.0
+
+      lidar:
+        type: topic
+        topic: "/scan"
+        timeout: 1.0
+
+      camera:
+        type: topic
+        topic: "/image_raw"
+        timeout: 1.0
+
+      imu:
+        type: i2c_topic
+        i2c_bus: 1
+        i2c_address: 0x68
+        topic: "/imu/data"
+        timeout: 0.5
+
+      magnetometer:
+        type: i2c_topic
+        i2c_bus: 1
+        i2c_address: 0x1E
+        topic: "/mag"
+        timeout: 0.5
