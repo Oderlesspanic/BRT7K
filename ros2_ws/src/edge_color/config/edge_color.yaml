@@ -14,41 +14,52 @@ color_edge_detection_node:
     saturation_min: 80
     value_min: 60
 
-color_edge_mapper_node:
+
+color_wall_projector_node:
   ros__parameters:
     input_topic: /color_patches/detected
-    output_topic: /color_patches/mapped
+    output_topic: /color_patches/projected
     camera_info_topic: /camera/camera_info
 
     camera_frame: camera_optical_link
     map_frame: map
 
-    ground_z: 0.0
+    arena_x_min: -1.5
+    arena_x_max: 1.5
+    arena_y_min: -1.0
+    arena_y_max: 1.0
+
+    wall_z_min: 0.05
+    wall_z_max: 1.20
+
     min_projection_distance: 0.1
     max_projection_distance: 5.0
-    publish_debug_markers: true
 
-
-semantic_color_edge_map_manager_node:
+color_corner_validator_node:
   ros__parameters:
-    input_topic: /color_patches/mapped
-    output_topic: /color_edge/managed_json
+    input_topic: /color_patches/projected
+    output_topic: /color_corners/valid
+    json_output_topic: /color_corners/valid_json
+    marker_topic: /color_corners/markers
 
-    merge_distance: 0.20
-    max_reacquire_distance_factor: 2.5
+    map_frame: map
 
-    save_to_file: true
-    save_path: /tmp/color_edge_map.json
+    arena_x_min: -1.5
+    arena_x_max: 1.5
+    arena_y_min: -1.0
+    arena_y_max: 1.0
 
-    max_objects: 100
-    forget_after_time: false
-    forget_after_seconds: 300.0
+    wall_distance_tolerance: 0.08
+    corner_distance_tolerance: 0.35
 
-    print_updates: true
+    # A3 hochkant: 297 mm x 420 mm
+    a3_width: 0.297
+    a3_height: 0.420
+    a3_size_tolerance: 0.35
 
-    use_hue_for_merge: true
-    max_hue_distance: 10.0
-    min_s_for_hue_match: 40.0
+    # Keine fixen Farben, aber kein weiß/grau/schwarz
+    min_s_for_color: 40.0
+    min_v_for_color: 50.0
 
-    use_map_area_for_merge: true
-    max_area_relative_difference: 0.35
+    publish_json: true
+    publish_markers: true

@@ -9,9 +9,20 @@ find_package(geometry_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedColorPatch.msg"
   "msg/DetectedColorPatchArray.msg"
-  "msg/MappedColorPatch.msg"
-  "msg/MappedColorPatchArray.msg"
-  DEPENDENCIES std_msgs geometry_msgs
+
+  "msg/ProjectedColorPatch.msg"
+  "msg/ProjectedColorPatchArray.msg"
+
+  "msg/ValidColorCorner.msg"
+  "msg/ValidColorCornerArray.msg"
+
+  "msg/ManagedCorner.msg"
+  "msg/ManagedCornerArray.msg"
+
+  DEPENDENCIES
+    std_msgs
+    geometry_msgs
+    builtin_interfaces
 )
 
 ament_export_dependencies(rosidl_default_runtime)
