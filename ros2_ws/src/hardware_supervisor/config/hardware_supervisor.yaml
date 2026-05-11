@@ -1,48 +1,72 @@
 hardware_supervisor:
   ros__parameters:
 
+    hardware_id: "mobile_robot"
     update_rate_hz: 2.0
 
-    devices:
+    device_names:
+      - esp32_drive
+      - esp32_sensors
+      - esp32_power
+      - lidar
+      - camera_csi
+      - imu
+      - magnetometer
 
+    devices:
       esp32_drive:
-        type: usb_topic
-        device: "/dev/serial/by-id/esp32_drive"
-        heartbeat_topic: "/esp32_drive/heartbeat"
+        physical_type: "usb"
+        communication_type: "esp32_heartbeat"
+        path: "/dev/serial/by-id/ESP32_DRIVE"
+        topic: "/esp32_drive/heartbeat"
+        topic_type: "std_msgs/msg/Empty"
         timeout: 2.0
 
       esp32_gripper:
-        type: usb_topic
-        device: "/dev/serial/by-id/esp32_gripper"
-        heartbeat_topic: "/esp32_gripper/heartbeat"
+        physical_type: "usb"
+        communication_type: "esp32_heartbeat"
+        path: "/dev/serial/by-id/ESP32_GRIPPER"
+        topic: "/esp32_gripper/heartbeat"
+        topic_type: "std_msgs/msg/Empty"
         timeout: 2.0
 
       esp32_monitor:
-        type: usb_topic
-        device: "/dev/serial/by-id/esp32_monitor"
-        heartbeat_topic: "/esp32_monitor/heartbeat"
+        physical_type: "usb"
+        communication_type: "esp32_heartbeat"
+        path: "/dev/serial/by-id/ESP32_MONITOR"
+        topic: "/esp32_monitor/heartbeat"
+        topic_type: "std_msgs/msg/Empty"
         timeout: 2.0
 
       lidar:
-        type: topic
+        physical_type: "usb"
+        communication_type: "topic"
+        path: "/dev/serial/by-id/LIDAR"
         topic: "/scan"
+        topic_type: "sensor_msgs/msg/LaserScan"
         timeout: 1.0
 
-      camera:
-        type: topic
-        topic: "/image_raw"
+      camera_csi:
+        physical_type: "none"
+        communication_type: "topic"
+        topic: "/camera/image_raw"
+        topic_type: "sensor_msgs/msg/Image"
         timeout: 1.0
 
       imu:
-        type: i2c_topic
+        physical_type: "i2c"
+        communication_type: "topic"
         i2c_bus: 1
-        i2c_address: 0x68
+        i2c_address: 104
         topic: "/imu/data"
+        topic_type: "sensor_msgs/msg/Imu"
         timeout: 0.5
 
       magnetometer:
-        type: i2c_topic
+        physical_type: "i2c"
+        communication_type: "topic"
         i2c_bus: 1
-        i2c_address: 0x1E
+        i2c_address: 30
         topic: "/mag"
+        topic_type: "sensor_msgs/msg/MagneticField"
         timeout: 0.5
