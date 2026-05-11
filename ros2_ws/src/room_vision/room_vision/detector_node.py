@@ -65,12 +65,14 @@ class YoloDetectorNode(Node):
         self.declare_parameter("confidence_threshold", 0.25)
         self.declare_parameter("nms_threshold", 0.45)
         self.declare_parameter("class_names", DEFAULT_CLASS_NAMES)
+        self.declare_parameter("distance_k", 8000.0)
 
         self.model_path: str = self.get_parameter("model_path").value
         self.input_size: int = int(self.get_parameter("input_size").value)
         self.conf_thres: float = float(self.get_parameter("confidence_threshold").value)
         self.nms_thres: float = float(self.get_parameter("nms_threshold").value)
         self.class_names: List[str] = list(self.get_parameter("class_names").value)
+        self.distance_k: float = float(self.get_parameter("distance_k").value)
 
         input_topic: str = self.get_parameter("input_topic").value
         image_out_topic: str = self.get_parameter("image_output_topic").value
@@ -243,13 +245,23 @@ class YoloDetectorNode(Node):
         det_array.header = msg.header  # gleicher frame_id/stamp wie die Kamera
 
         annotated = frame.copy()
+        h, w = annotated.shape[:2]
+        cx_img, cy_img = w // 2, h // 2
+
         for (x1, y1, x2, y2, score, cls_id) in detections:
             name = self._class_name(cls_id)
             color = self.class_colors[cls_id % len(self.class_colors)]
             color_bgr = (int(color[0]), int(color[1]), int(color[2]))
 
+            obj_cx = (x1 + x2) // 2
+            obj_cy = (y1 + y2) // 2
+            distance_cm = self.distance_k / max(y2 - y1, 1)
+
+            # Linie von Bildmitte zum Objektzentrum
+            cv2.line(annotated, (cx_img, cy_img), (obj_cx, obj_cy), (0, 255, 255), 2)
+
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color_bgr, 2)
-            label = f"{name} {score:.2f}"
+            label = f"{name} {score:.2f} {distance_cm:.0f}cm"
             (tw, th), baseline = cv2.getTextSize(
                 label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
             )
@@ -276,6 +288,12 @@ class YoloDetectorNode(Node):
             det.class_name = name
             det.confidence = float(score)
             det_array.detections.append(det)
+
+        # Fadenkreuz zuletzt zeichnen (liegt ueber allem)
+        cv2.circle(annotated, (cx_img, cy_img), 6, (255, 255, 255), -1)
+        cv2.circle(annotated, (cx_img, cy_img), 7, (0, 0, 0), 1)
+        cv2.line(annotated, (cx_img - 25, cy_img), (cx_img + 25, cy_img), (255, 255, 255), 2)
+        cv2.line(annotated, (cx_img, cy_img - 25), (cx_img, cy_img + 25), (255, 255, 255), 2)
 
         self.pub_detections.publish(det_array)
 
