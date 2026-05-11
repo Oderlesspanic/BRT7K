@@ -7,7 +7,6 @@ room_vision_detector:
     confidence_threshold: 0.25
     nms_threshold: 0.45
     class_names: ["wurfel", "ball", "mate", "logo"]
-    distance_k: 8000.0   # Kalibrierungskonstante: distance_cm = distance_k / box_hoehe_px
     # model_path leer lassen -> Default aus ament_index (share/room_vision/models/best.onnx)
     # Bei Bedarf absoluten Pfad setzen, z.B.:
     # model_path: "/home/pi/ros2_ws/src/room_vision/models/best.onnx"
