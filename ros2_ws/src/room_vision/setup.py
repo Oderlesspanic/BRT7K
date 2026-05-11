@@ -24,7 +24,6 @@ setup(
     entry_points={
         "console_scripts": [
             "detector = room_vision.detector_node:main",
-            "target_selector = room_vision.target_selector_node:main",
         ],
     },
 )
