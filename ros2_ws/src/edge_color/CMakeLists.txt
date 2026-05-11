@@ -17,7 +17,7 @@ find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(ament_cmake_gtest REQUIRED)
 find_package(interfaces REQUIRED)
-find_package(nlohmann_json REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 include_directories(include)
 
@@ -32,6 +32,20 @@ target_include_directories(color_patch_detector_lib PUBLIC
 
 target_link_libraries(color_patch_detector_lib
   ${OpenCV_LIBS}
+)
+
+add_library(color_corner_validator_lib
+  src/color_corner_validator.cpp
+)
+
+target_include_directories(color_corner_validator_lib PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(color_corner_validator_lib
+  interfaces
+  geometry_msgs
 )
 
 add_executable(color_edge_detection_node
@@ -60,61 +74,61 @@ target_link_libraries(color_edge_detection_node
   ${OpenCV_LIBS}
 )
 
-add_executable(color_edge_mapper_node
-  src/color_edge_mapper_node.cpp
-  src/color_edge_mapper_main.cpp
-  src/color_edge_transform.cpp
+add_executable(color_wall_projector_node
+  src/color_wall_projector_node.cpp
+  src/color_wall_projector_main.cpp
+  src/color_wall_projection.cpp
 )
 
-target_include_directories(color_edge_mapper_node PUBLIC
+target_include_directories(color_wall_projector_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-ament_target_dependencies(color_edge_mapper_node
+ament_target_dependencies(color_wall_projector_node
   rclcpp
   sensor_msgs
   std_msgs
   geometry_msgs
   tf2
   tf2_ros
-  cv_bridge
   interfaces
   tf2_geometry_msgs
 )
 
-target_link_libraries(color_edge_mapper_node
+target_link_libraries(color_wall_projector_node
   ${OpenCV_LIBS}
 )
 
-add_executable(semantic_color_edge_map_manager_node
-  src/semantic_color_edge_map_manager_node.cpp
-  src/semantic_color_edge_map_manager_main.cpp
-  src/semantic_color_edge_map_manager.cpp
+add_executable(color_corner_validator_node
+  src/color_corner_validator_node.cpp
+  src/color_corner_validator_main.cpp
 )
 
-target_include_directories(semantic_color_edge_map_manager_node PUBLIC
+target_include_directories(color_corner_validator_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-ament_target_dependencies(semantic_color_edge_map_manager_node
+ament_target_dependencies(color_corner_validator_node
   rclcpp
   std_msgs
   geometry_msgs
+  visualization_msgs
   interfaces
 )
 
-target_link_libraries(semantic_color_edge_map_manager_node
-  nlohmann_json::nlohmann_json
+target_link_libraries(color_corner_validator_node
+  color_corner_validator_lib
 )
 
 install(
   TARGETS
     color_patch_detector_lib
+    color_corner_validator_lib
     color_edge_detection_node
-    color_edge_mapper_node
-    semantic_color_edge_map_manager_node
+    color_wall_projector_node
+    color_corner_validator_node
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib

@@ -19,24 +19,24 @@ def generate_launch_description():
         parameters=[config]
     )
 
-    color_edge_mapper_node = Node(
+    color_wall_projector_node = Node(
         package='edge_color',
-        executable='color_edge_mapper_node',
-        name='color_edge_mapper_node',
+        executable='color_wall_projector_node',
+        name='color_wall_projector_node',
         output='screen',
         parameters=[config]
     )
 
-    semantic_color_edge_map_manager_node = Node(
+    color_corner_validator_node = Node(
         package='edge_color',
-        executable='semantic_color_edge_map_manager_node',
-        name='semantic_color_edge_map_manager_node',
+        executable='color_corner_validator_node',
+        name='color_corner_validator_node',
         output='screen',
         parameters=[config]
     )
 
     return LaunchDescription([
         color_edge_detection_node,
-        color_edge_mapper_node,
-        semantic_color_edge_map_manager_node
+        color_wall_projector_node,
+        color_corner_validator_node
     ])

@@ -1,0 +1,24 @@
+corner_manager_node:
+  ros__parameters:
+    input_topic: /color_corners/valid
+    output_topic: /corners
+    json_output_topic: /corners/json
+    marker_topic: /corners/markers
+
+    map_frame: map
+
+    merge_distance: 0.20
+
+    use_hsv_for_merge: true
+    max_hue_distance: 12.0
+    max_s_difference: 80.0
+    max_v_difference: 100.0
+    min_s_for_hue_match: 40.0
+
+    max_corners: 20
+
+    forget_after_time: false
+    forget_after_seconds: 300.0
+
+    publish_json: true
+    publish_markers: true

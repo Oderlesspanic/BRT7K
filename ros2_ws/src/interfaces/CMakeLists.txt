@@ -10,6 +10,20 @@ find_package(vision_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedColorPatch.msg"
   "msg/DetectedColorPatchArray.msg"
+
+  "msg/ProjectedColorPatch.msg"
+  "msg/ProjectedColorPatchArray.msg"
+
+  "msg/ValidColorCorner.msg"
+  "msg/ValidColorCornerArray.msg"
+
+  "msg/ManagedCorner.msg"
+  "msg/ManagedCornerArray.msg"
+
+  DEPENDENCIES
+    std_msgs
+    geometry_msgs
+    builtin_interfaces
   "msg/MappedColorPatch.msg"
   "msg/MappedColorPatchArray.msg"
   "msg/CameraDetection.msg"
