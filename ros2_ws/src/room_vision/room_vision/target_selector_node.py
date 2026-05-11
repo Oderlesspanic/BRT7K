@@ -35,7 +35,7 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
-from vision_msgs.msg import Detection2D, Detection2DArray
+from interfaces.msg import CameraDetection, CameraDetectionArray
 
 
 @dataclass
@@ -92,7 +92,7 @@ class TargetSelectorNode(Node):
 
         # Subscriptions
         self.sub_det = self.create_subscription(
-            Detection2DArray, self.detections_topic, self._on_detections, 10
+            CameraDetectionArray, self.detections_topic, self._on_detections, 10
         )
         self.sub_info = self.create_subscription(
             CameraInfo, self.camera_info_topic, self._on_camera_info, 10
@@ -153,17 +153,17 @@ class TargetSelectorNode(Node):
             return "right"
         return "center"
 
-    def _build_target_info(self, det: Detection2D) -> Optional[TargetInfo]:
-        """Berechnet die Geometrie-Info fuer eine einzelne Detection."""
-        if not det.results:
-            return None
-        cls = det.results[0].hypothesis.class_id
+    def _build_target_info(self, det: CameraDetection) -> Optional[TargetInfo]:
+        cls = det.class_name
+
         if self.filter_classes and cls not in self.filter_classes:
             return None
 
-        conf = float(det.results[0].hypothesis.score)
+        conf = float(det.confidence)
+
         cx = self.image_width / 2.0
         cy = self.image_height / 2.0
+
         ox = det.bbox.center.position.x
         oy = det.bbox.center.position.y
         bw = max(det.bbox.size_x, 1.0)
@@ -171,6 +171,7 @@ class TargetSelectorNode(Node):
 
         dx = int(round(ox - cx))
         dy = int(round(oy - cy))
+
         distance_cm = self.distance_k / bh
         direction = self._direction_from_dx(dx)
 
@@ -180,12 +181,19 @@ class TargetSelectorNode(Node):
         y2 = int(round(oy + bh / 2.0))
 
         return TargetInfo(
-            cls=cls, conf=conf, dx=dx, dy=dy,
-            direction=direction, distance_cm=distance_cm,
-            obj_x=int(round(ox)), obj_y=int(round(oy)),
-            box_x1=x1, box_y1=y1, box_x2=x2, box_y2=y2,
+            cls=cls,
+            conf=conf,
+            dx=dx,
+            dy=dy,
+            direction=direction,
+            distance_cm=distance_cm,
+            obj_x=int(round(ox)),
+            obj_y=int(round(oy)),
+            box_x1=x1,
+            box_y1=y1,
+            box_x2=x2,
+            box_y2=y2,
         )
-
     # ---------------------------------------------------------------------
     def _draw_crosshair(self, img: np.ndarray, cx: int, cy: int) -> None:
         cv2.circle(img, (cx, cy), 6, (255, 255, 255), -1)
@@ -250,7 +258,7 @@ class TargetSelectorNode(Node):
         )
 
     # ---------------------------------------------------------------------
-    def _on_detections(self, msg: Detection2DArray) -> None:
+    def _on_detections(self, msg: CameraDetectionArray) -> None:
         if self.image_width is None or self.image_height is None:
             return
 
@@ -287,7 +295,7 @@ class TargetSelectorNode(Node):
 
         try:
             out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
-            out_msg.header = self._latest_frame_header or msg.header
+            out_msg.header = self._latest_frame_header
             self.pub_target_image.publish(out_msg)
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warning(f"Konnte annotiertes Bild nicht publishen: {exc}")
