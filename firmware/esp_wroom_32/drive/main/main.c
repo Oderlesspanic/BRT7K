@@ -1,11 +1,6 @@
-#include <stdio.h>
-#include <stdbool.h>
-#include <unistd.h>
+#include "drive_node.h"
 
 void app_main(void)
 {
-    while (true) {
-        printf("Hello from app_main!\n");
-        sleep(1);
-    }
+    drive_node_start();
 }
