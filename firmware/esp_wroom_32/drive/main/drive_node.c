@@ -6,6 +6,10 @@
  */
 
 
+ /*
+  * drive_node.c
+  */
+
  #include "drive_node.h"
 
  #include <stdio.h>
@@ -21,11 +25,11 @@
  #include "driver/uart.h"
  #include "driver/gpio.h"
 
-
  #include <rcl/rcl.h>
  #include <rclc/rclc.h>
  #include <rclc/executor.h>
  #include <rmw_microros/rmw_microros.h>
+
 
  #include <std_msgs/msg/empty.h>
  #include <std_msgs/msg/string.h>
@@ -193,7 +197,7 @@
          motor_stop(&motor_right);
      }
  }
- 
+
  static void heartbeat_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
  {
      (void)last_call_time;
@@ -280,13 +284,13 @@
          ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, JointState),
          "/joint_states"
      );
-	 
-	 rclc_publisher_init_default(
-	     &heartbeat_pub,
-	     &node,
-	     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Empty),
-	     "/esp32_drive/heartbeat"
-	 );
+
+     rclc_publisher_init_default(
+         &heartbeat_pub,
+         &node,
+         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Empty),
+         "/esp32_drive/heartbeat"
+     );
 
      rclc_subscription_init_default(
          &cmd_sub,
@@ -330,16 +334,18 @@
          RCL_MS_TO_NS(50),
          watchdog_timer_callback
      );
-	 
-	 rclc_timer_init_default(
-	     &heartbeat_timer,
-	     &support,
-	     RCL_MS_TO_NS(500),
-	     heartbeat_timer_callback
-	 );
+
+     rclc_timer_init_default(
+         &heartbeat_timer,
+         &support,
+         RCL_MS_TO_NS(500),
+         heartbeat_timer_callback
+     );
 
      init_joint_state_message();
      init_robot_description_message();
+     std_msgs__msg__Empty__init(&heartbeat_msg);
+     geometry_msgs__msg__Twist__init(&cmd_msg);
 
      last_cmd_time_ms = esp_timer_get_time() / 1000;
 
@@ -363,7 +369,7 @@
 
      rclc_executor_add_timer(&executor, &joint_timer);
      rclc_executor_add_timer(&executor, &watchdog_timer);
-	 rclc_executor_add_timer(&executor, &heartbeat_timer);
+     rclc_executor_add_timer(&executor, &heartbeat_timer);
 
      ESP_LOGI(TAG, "micro-ROS drive_node gestartet");
 
