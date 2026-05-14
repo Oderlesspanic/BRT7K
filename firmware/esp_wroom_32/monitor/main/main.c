@@ -1,10 +1,13 @@
 #include "monitor_node.h"
+#include "esp32_serial_transport.h"
 
 #include "driver/i2c.h"
+#include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <rmw_microros/rmw_microros.h>
-#include <uxr/client/transport.h>
+
+static size_t uart_port = UART_NUM_0;
 
 #define I2C_PORT              I2C_NUM_0
 #define I2C_SDA_PIN           21
@@ -29,6 +32,19 @@ static void i2c_master_init(void)
 
 void app_main(void)
 {
+#if defined(RMW_UXRCE_TRANSPORT_CUSTOM)
+    rmw_uros_set_custom_transport(
+        true,
+        (void *)&uart_port,
+        esp32_serial_open,
+        esp32_serial_close,
+        esp32_serial_write,
+        esp32_serial_read
+    );
+#else
+#error micro-ROS transports misconfigured
+#endif
+
     i2c_master_init();
 
     monitor_node_start();

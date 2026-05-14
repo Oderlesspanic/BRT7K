@@ -7,6 +7,7 @@ idf_component_register(
         "motor.c"
         "urdf_parser.c"
         "drive_node.c"
+        "esp32_serial_transport.c"
 
     INCLUDE_DIRS
         "."
