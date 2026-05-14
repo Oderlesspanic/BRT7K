@@ -4,3 +4,15 @@
 [submodule "ros2_ws/src/sllidar_ros2"]
 	path = ros2_ws/src/sllidar_ros2
 	url = https://github.com/Slamtec/sllidar_ros2.git
+[submodule "firmware/esp_wroom_32/monitor/components/micro_ros_espidf_component"]
+	path = firmware/esp_wroom_32/monitor/components/micro_ros_espidf_component
+	url = https://github.com/micro-ROS/micro_ros_espidf_component.git
+	branch = jazzy
+[submodule "firmware/esp_wroom_32/drive/components/micro_ros_espidf_component"]
+	path = firmware/esp_wroom_32/drive/components/micro_ros_espidf_component
+	url = https://github.com/micro-ROS/micro_ros_espidf_component.git
+	branch = jazzy
+[submodule "firmware/esp_wroom_32/gripper/components/micro_ros_espidf_component"]
+	path = firmware/esp_wroom_32/gripper/components/micro_ros_espidf_component
+	url = https://github.com/micro-ROS/micro_ros_espidf_component.git
+	branch = jazzy
