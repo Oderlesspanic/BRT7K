@@ -3,6 +3,7 @@ idf_component_register(
         "main.c"
         "ina226_10.c"
         "monitor_node.c"
+        "esp32_serial_transport.c"
 
     INCLUDE_DIRS
         "."
