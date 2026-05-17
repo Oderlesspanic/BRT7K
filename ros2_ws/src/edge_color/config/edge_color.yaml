@@ -5,7 +5,7 @@ color_edge_detection_node:
     camera_info_topic: /camera/camera_info
 
     
-    debug_view: true
+    debug_view: false
     publish_debug_image: true
 
     # Mindestgröße für erkannte Flächen (Pixel)

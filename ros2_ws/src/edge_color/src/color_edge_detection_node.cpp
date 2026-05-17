@@ -12,7 +12,8 @@ ColorEdgeDetectionNode::ColorEdgeDetectionNode()
 : Node("color_edge_detection_node"),
   image_topic_(this->declare_parameter<std::string>("image_topic", "/camera/image_raw")),
   detected_patches_topic_(this->declare_parameter<std::string>("detected_patches_topic", "/color_patches/detected")),
-  debug_view_(this->declare_parameter<bool>("debug_view", true)),
+  debug_view_(this->declare_parameter<bool>("debug_view", false)),
+  publish_debug_image_(this->declare_parameter<bool>("publish_debug_image", true)),
   detector_(
     this->declare_parameter<double>("min_contour_area", 800.0),
     this->declare_parameter<int>("saturation_min", 80),
@@ -28,10 +29,16 @@ ColorEdgeDetectionNode::ColorEdgeDetectionNode()
     this->create_publisher<interfaces::msg::DetectedColorPatchArray>(
       detected_patches_topic_, 10);
 
+  if (publish_debug_image_) {
+    debug_image_pub_ =
+      this->create_publisher<sensor_msgs::msg::Image>(
+        "/color_patches/debug_image", 10);
+  }
+
   RCLCPP_INFO(this->get_logger(), "color_edge_detection_node gestartet");
   RCLCPP_INFO(this->get_logger(), "image_topic: %s", image_topic_.c_str());
   RCLCPP_INFO(this->get_logger(), "detected_patches_topic: %s", detected_patches_topic_.c_str());
-  RCLCPP_INFO(this->get_logger(), "debug_view: %s", debug_view_ ? "true" : "false");
+  RCLCPP_INFO(this->get_logger(), "publish_debug_image: %s", publish_debug_image_ ? "true" : "false");
 }
 
 void ColorEdgeDetectionNode::image_callback(const sensor_msgs::msg::Image::SharedPtr msg)
@@ -85,10 +92,17 @@ void ColorEdgeDetectionNode::image_callback(const sensor_msgs::msg::Image::Share
     );
   }
 
-  if (debug_view_) {
+  if (publish_debug_image_ || debug_view_) {
     const cv::Mat debug_image = draw_detected_patches(bgr_image, patches);
-    cv::imshow("color_edge_detection", debug_image);
-    cv::waitKey(1);
+
+    if (publish_debug_image_) {
+      publish_debug_image(debug_image, msg->header);
+    }
+
+    if (debug_view_) {
+      cv::imshow("color_edge_detection", debug_image);
+      cv::waitKey(1);
+    }
   }
 }
 
@@ -132,6 +146,14 @@ void ColorEdgeDetectionNode::publish_detected_patches(
   }
 
   detected_patches_pub_->publish(msg);
+}
+
+void ColorEdgeDetectionNode::publish_debug_image(
+  const cv::Mat & debug_image,
+  const std_msgs::msg::Header & header)
+{
+  auto msg = cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, debug_image).toImageMsg();
+  debug_image_pub_->publish(*msg);
 }
 
 cv::Mat ColorEdgeDetectionNode::draw_detected_patches(
