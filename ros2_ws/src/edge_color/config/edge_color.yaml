@@ -20,6 +20,8 @@ color_wall_projector_node:
     input_topic: /color_patches/detected
     output_topic: /color_patches/projected
     camera_info_topic: /camera/camera_info
+    image_topic: /camera/image_raw
+    publish_debug_image: true
 
     camera_frame: camera_optical_link
     map_frame: map
@@ -41,6 +43,9 @@ color_corner_validator_node:
     output_topic: /color_corners/valid
     json_output_topic: /color_corners/valid_json
     marker_topic: /color_corners/markers
+    image_topic: /camera/image_raw
+    detected_topic: /color_patches/detected
+    publish_debug_image: true
 
     map_frame: map
 
