@@ -23,8 +23,8 @@ ColorWallProjectorNode::ColorWallProjectorNode()
   min_projection_distance_(this->declare_parameter<double>("min_projection_distance", 0.1)),
   max_projection_distance_(this->declare_parameter<double>("max_projection_distance", 5.0)),
   has_camera_info_(false),
-  publish_debug_image_(this->declare_parameter<bool>("publish_debug_image", true)),
-  image_topic_(this->declare_parameter<std::string>("image_topic", "/camera/image_raw"))
+  image_topic_(this->declare_parameter<std::string>("image_topic", "/camera/image_raw")),
+  publish_debug_image_(this->declare_parameter<bool>("publish_debug_image", true))
 {
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);

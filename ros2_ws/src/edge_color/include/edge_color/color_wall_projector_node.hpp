@@ -78,7 +78,7 @@ private:
 
   bool has_camera_info_;
   bool publish_debug_image_;
+  cv::Mat last_image_;
 
   CameraIntrinsics intrinsics_;
-  cv::Mat last_image_;
 };
