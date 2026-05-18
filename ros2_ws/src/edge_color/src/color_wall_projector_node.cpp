@@ -14,6 +14,7 @@ ColorWallProjectorNode::ColorWallProjectorNode()
   camera_info_topic_(this->declare_parameter<std::string>("camera_info_topic", "/camera/camera_info")),
   camera_frame_(this->declare_parameter<std::string>("camera_frame", "camera_optical_link")),
   map_frame_(this->declare_parameter<std::string>("map_frame", "map")),
+  image_topic_(this->declare_parameter<std::string>("image_topic", "/camera/image_raw")),
   arena_x_min_(this->declare_parameter<double>("arena_x_min", -1.5)),
   arena_x_max_(this->declare_parameter<double>("arena_x_max", 1.5)),
   arena_y_min_(this->declare_parameter<double>("arena_y_min", -1.0)),
@@ -23,7 +24,6 @@ ColorWallProjectorNode::ColorWallProjectorNode()
   min_projection_distance_(this->declare_parameter<double>("min_projection_distance", 0.1)),
   max_projection_distance_(this->declare_parameter<double>("max_projection_distance", 5.0)),
   has_camera_info_(false),
-  image_topic_(this->declare_parameter<std::string>("image_topic", "/camera/image_raw")),
   publish_debug_image_(this->declare_parameter<bool>("publish_debug_image", true))
 {
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
