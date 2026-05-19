@@ -1,5 +1,6 @@
 services:
   ros2-dev:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: docker/dev/Dockerfile
