@@ -94,6 +94,7 @@ ament_target_dependencies(color_wall_projector_node
   tf2_ros
   interfaces
   tf2_geometry_msgs
+  cv_bridge
 )
 
 target_link_libraries(color_wall_projector_node
@@ -112,14 +113,17 @@ target_include_directories(color_corner_validator_node PUBLIC
 
 ament_target_dependencies(color_corner_validator_node
   rclcpp
+  sensor_msgs
   std_msgs
   geometry_msgs
   visualization_msgs
   interfaces
+  cv_bridge
 )
 
 target_link_libraries(color_corner_validator_node
   color_corner_validator_lib
+  ${OpenCV_LIBS}
 )
 
 install(

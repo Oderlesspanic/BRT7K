@@ -1,4 +1,4 @@
-FROM osrf/ros:jazzy-desktop
+FROM --platform=linux/arm64 osrf/ros:jazzy-desktop
 
 SHELL ["/bin/bash", "-c"]
 
@@ -32,7 +32,6 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-message-filters \
     ros-jazzy-vision-msgs \
     ros-jazzy-image-pipeline \
-    ros-jazzy-rosbridge-server \
     ros-jazzy-rosbridge-suite \
     libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -40,5 +39,3 @@ RUN apt-get update && apt-get install -y \
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
 
 WORKDIR /ros2_ws
-
-CMD ["bash"]

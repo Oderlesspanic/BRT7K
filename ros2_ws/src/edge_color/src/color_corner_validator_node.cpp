@@ -1,6 +1,10 @@
 #include "edge_color/color_corner_validator_node.hpp"
 
+#include <cmath>
 #include <sstream>
+
+#include "cv_bridge/cv_bridge.hpp"
+#include "sensor_msgs/image_encodings.hpp"
 
 ColorCornerValidatorNode::ColorCornerValidatorNode()
 : Node("color_corner_validator_node"),
@@ -54,6 +58,21 @@ ColorCornerValidatorNode::ColorCornerValidatorNode()
       "publish_markers",
       true);
 
+  publish_debug_image_ =
+    this->declare_parameter<bool>(
+      "publish_debug_image",
+      true);
+
+  image_topic_ =
+    this->declare_parameter<std::string>(
+      "image_topic",
+      "/camera/image_raw");
+
+  detected_topic_ =
+    this->declare_parameter<std::string>(
+      "detected_topic",
+      "/color_patches/detected");
+
   input_sub_ =
     this->create_subscription<interfaces::msg::ProjectedColorPatchArray>(
       input_topic_,
@@ -78,7 +97,24 @@ ColorCornerValidatorNode::ColorCornerValidatorNode()
       marker_topic_,
       10);
 
+  if (publish_debug_image_) {
+    image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+      image_topic_,
+      10,
+      std::bind(&ColorCornerValidatorNode::image_callback, this, std::placeholders::_1));
+
+    detected_patches_sub_ = this->create_subscription<interfaces::msg::DetectedColorPatchArray>(
+      detected_topic_,
+      10,
+      std::bind(&ColorCornerValidatorNode::detected_patches_callback, this, std::placeholders::_1));
+
+    debug_image_pub_ =
+      this->create_publisher<sensor_msgs::msg::Image>(
+        "/color_corners/debug_image", 10);
+  }
+
   RCLCPP_INFO(this->get_logger(), "color_corner_validator_node gestartet");
+  RCLCPP_INFO(this->get_logger(), "publish_debug_image: %s", publish_debug_image_ ? "true" : "false");
 }
 
 void ColorCornerValidatorNode::projected_patches_callback(
@@ -88,11 +124,17 @@ void ColorCornerValidatorNode::projected_patches_callback(
   valid_msg.header = msg->header;
   valid_msg.header.frame_id = map_frame_;
 
-  for (const auto & patch : msg->patches) {
-    auto corner = validator_.validate(patch);
+  std::vector<bool> is_valid(msg->patches.size(), false);
+  std::vector<std::string> corner_ids(msg->patches.size());
+  std::vector<double> scores(msg->patches.size(), 0.0);
 
+  for (std::size_t i = 0; i < msg->patches.size(); ++i) {
+    auto corner = validator_.validate(msg->patches[i]);
     if (corner.has_value()) {
       valid_msg.corners.push_back(corner.value());
+      is_valid[i] = true;
+      corner_ids[i] = corner->corner_id;
+      scores[i] = corner->validation_score;
     }
   }
 
@@ -106,6 +148,12 @@ void ColorCornerValidatorNode::projected_patches_callback(
     publish_markers(valid_msg);
   }
 
+  if (publish_debug_image_ && !last_image_.empty() && last_detected_patches_) {
+    const cv::Mat debug_img = draw_validation_results(
+      last_image_, *last_detected_patches_, *msg, is_valid, corner_ids, scores);
+    publish_debug_image(debug_img, msg->header);
+  }
+
   RCLCPP_INFO_THROTTLE(
     this->get_logger(),
     *this->get_clock(),
@@ -113,6 +161,21 @@ void ColorCornerValidatorNode::projected_patches_callback(
     "Projected patches: %zu | valid corners: %zu",
     msg->patches.size(),
     valid_msg.corners.size());
+}
+
+void ColorCornerValidatorNode::image_callback(const sensor_msgs::msg::Image::SharedPtr msg)
+{
+  try {
+    last_image_ = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8)->image.clone();
+  } catch (const cv_bridge::Exception & e) {
+    RCLCPP_ERROR(this->get_logger(), "cv_bridge exception in image_callback: %s", e.what());
+  }
+}
+
+void ColorCornerValidatorNode::detected_patches_callback(
+  const interfaces::msg::DetectedColorPatchArray::SharedPtr msg)
+{
+  last_detected_patches_ = msg;
 }
 
 void ColorCornerValidatorNode::publish_json(
@@ -218,4 +281,72 @@ void ColorCornerValidatorNode::publish_markers(
   }
 
   marker_pub_->publish(marker_array);
+}
+
+cv::Mat ColorCornerValidatorNode::draw_validation_results(
+  const cv::Mat & base_image,
+  const interfaces::msg::DetectedColorPatchArray & detected,
+  const interfaces::msg::ProjectedColorPatchArray & projected,
+  const std::vector<bool> & is_valid,
+  const std::vector<std::string> & corner_ids,
+  const std::vector<double> & scores) const
+{
+  cv::Mat debug_image = base_image.clone();
+
+  for (std::size_t i = 0; i < projected.patches.size(); ++i) {
+    const double target_area = projected.patches[i].pixel_area;
+
+    const interfaces::msg::DetectedColorPatch * matching = nullptr;
+    for (const auto & det : detected.patches) {
+      if (std::abs(det.pixel_area - target_area) < 0.5) {
+        matching = &det;
+        break;
+      }
+    }
+    if (!matching) {
+      continue;
+    }
+
+    const bool valid = is_valid[i];
+    const cv::Scalar color = valid ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
+
+    std::vector<cv::Point> polygon;
+    for (const auto & corner : matching->corners_image) {
+      const cv::Point p(static_cast<int>(corner.x), static_cast<int>(corner.y));
+      polygon.push_back(p);
+      cv::circle(debug_image, p, 5, cv::Scalar(0, 255, 255), -1);
+    }
+
+    if (polygon.size() == 4) {
+      cv::polylines(debug_image, polygon, true, color, 2);
+    }
+
+    const cv::Point center(
+      static_cast<int>(matching->center_image.x),
+      static_cast<int>(matching->center_image.y));
+    cv::circle(debug_image, center, 6, color, -1);
+
+    std::string label;
+    if (valid) {
+      label = corner_ids[i] +
+        " (" + std::to_string(static_cast<int>(std::round(scores[i] * 100))) + "%)";
+    } else {
+      label = "rejected";
+    }
+
+    cv::Point text_pos = polygon.empty() ? center : polygon[0];
+    text_pos.y = std::max(text_pos.y - 5, 15);
+
+    cv::putText(debug_image, label, text_pos, cv::FONT_HERSHEY_SIMPLEX, 0.55, color, 2);
+  }
+
+  return debug_image;
+}
+
+void ColorCornerValidatorNode::publish_debug_image(
+  const cv::Mat & image,
+  const std_msgs::msg::Header & header)
+{
+  auto msg = cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, image).toImageMsg();
+  debug_image_pub_->publish(*msg);
 }
