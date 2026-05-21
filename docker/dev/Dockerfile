@@ -32,6 +32,8 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-message-filters \
     ros-jazzy-vision-msgs \
     ros-jazzy-image-pipeline \
+    ros-jazzy-rosbridge-server \
+    ros-jazzy-rosbridge-suite \
     libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_web</name>
+  <version>0.0.1</version>
+  <description>Web dashboard for robot control and map display</description>
+
+  <maintainer email="jan.wild@stud.fhgr.ch">jan</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rosbridge_server</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
