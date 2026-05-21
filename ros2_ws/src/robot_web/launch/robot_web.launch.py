@@ -23,14 +23,16 @@ def generate_launch_description():
         ),
 
         ExecuteProcess(
-            cmd=[
-                "python3",
-                "-m",
-                "http.server",
-                "8080",
-                "--directory",
-                web_dir
-            ],
-            output="screen"
-        )
+    cmd=[
+        "python3",
+        "-m",
+        "http.server",
+        "8080",
+        "--bind",
+        "0.0.0.0",
+        "--directory",
+        web_dir
+    ],
+    output="screen"
+)
     ])
