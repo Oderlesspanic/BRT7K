@@ -1,0 +1,33 @@
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
+import os
+
+
+def generate_launch_description():
+    mapping_dir = get_package_share_directory("mapping")
+    mapping_launch = os.path.join(
+        mapping_dir,
+        "launch",
+        "mapping.launch.py"
+    )
+
+
+    frontier_explorer_dir = get_package_share_directory("frontier_explorer")
+    frontier_explorer_launch = os.path.join(
+        frontier_explorer_dir,
+        "launch",
+        "frontier_explorer.launch.py"
+
+    )
+
+    return LaunchDescription([
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(mapping_launch)
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(frontier_explorer_launch)
+        )
+    ])

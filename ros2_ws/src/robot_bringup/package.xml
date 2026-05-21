@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_bringup</name>
+  <version>0.0.1</version>
+  <description>Bringup package for the robot system</description>
+
+  <maintainer email="jan.wild@stud.fhgr.ch">jan</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>robot_description</exec_depend>
+  <exec_depend>robot_web</exec_depend>
+  <exec_depend>rosbridge_server</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>camera</exec_depend>
+  <exec_depend>corner_manager</exec_depend>
+  <exec_depend>object_manager</exec_depend>
+  <exec_depend>room_vision</exec_depend>
+  <exec_depend>object_localizer</exec_depend>
+  <exec_depend>edge_color</exec_depend>
+  <exec_depend>imu</exec_depend>
+  <exec_depend>ekf</exec_depend>
+  <exec_depend>frontier_explorer</exec_depend>
+  <exec_depend>imu_mag_fusion</exec_depend>
+  <exec_depend>hardware_supervisor</exec_depend>
+  <exec_depend>mapping</exec_depend>
+  <exec_depend>navigation</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>mmc5603</exec_depend>
+  <exec_depend>odometry</exec_depend>
+  <exec_depend>sllidar_ros2</exec_depend>
+  <exec_depend>taskmanager</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
