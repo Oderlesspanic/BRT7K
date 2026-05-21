@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Robot Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>Robot Dashboard</h1>
+
+<div class="dashboard">
+
+  <div class="tile">
+    <h2>ROS Status</h2>
+    <div id="rosStatus" class="status disconnected">getrennt</div>
+  </div>
+
+  <div class="tile">
+    <h2>Systemstatus</h2>
+
+    <div class="value-row">
+      <span>Batteriespannung</span>
+      <strong id="batteryVoltage">-- V</strong>
+    </div>
+
+    <div class="value-row">
+      <span>Stromverbrauch</span>
+      <strong id="currentDraw">-- A</strong>
+    </div>
+
+    <div class="lamp-grid">
+      <div><span id="lamp_lidar" class="lamp red"></span>Lidar</div>
+      <div><span id="lamp_camera" class="lamp red"></span>Kamera</div>
+      <div><span id="lamp_esp_drive" class="lamp red"></span>ESP Drive</div>
+      <div><span id="lamp_esp_gripper" class="lamp red"></span>ESP Gripper</div>
+      <div><span id="lamp_esp_monitor" class="lamp red"></span>ESP Monitor</div>
+      <div><span id="lamp_imu" class="lamp red"></span>IMU</div>
+      <div><span id="lamp_magnetometer" class="lamp red"></span>Magnetometer</div>
+    </div>
+  </div>
+
+  <div class="tile">
+    <h2>Steuerung</h2>
+
+    <label for="speedSlider">Geschwindigkeit</label>
+    <input id="speedSlider" type="range" min="0" max="100" value="30">
+    <div><strong id="speedValue">30%</strong></div>
+
+    <div class="control-cross">
+      <button id="btnForward">▲</button>
+      <button id="btnLeft">◀</button>
+      <button id="btnStop">■</button>
+      <button id="btnRight">▶</button>
+      <button id="btnBackward">▼</button>
+    </div>
+
+    <div class="mode-buttons">
+      <button id="btnManual" class="active">Manuell</button>
+      <button id="btnAuto">Automatik</button>
+    </div>
+
+    <hr>
+
+    <h3>Objektauftrag</h3>
+
+    <h4>Objekt auswählen</h4>
+    <div id="objectTileGrid" class="selection-grid">
+      <div class="empty-info">Keine Objekte verfügbar</div>
+    </div>
+
+    <h4>Ziel-Ecke auswählen</h4>
+    <div id="cornerTileGrid" class="selection-grid">
+      <div class="empty-info">Keine Ecken verfügbar</div>
+    </div>
+
+    <button id="btnSendObjectCommand" class="send-button">
+      Auftrag senden
+    </button>
+  </div>
+
+  <div class="tile map-tile">
+    <h2>Karte</h2>
+    <canvas id="mapCanvas"></canvas>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
