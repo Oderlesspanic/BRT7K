@@ -25,11 +25,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CameraDetection.msg"
   "msg/CameraDetectionArray.msg"
 
+  "msg/ObjectPlaceCommand.msg"
+
   DEPENDENCIES
     std_msgs
     geometry_msgs
     vision_msgs
     builtin_interfaces
+    
 )
 
 ament_export_dependencies(rosidl_default_runtime)

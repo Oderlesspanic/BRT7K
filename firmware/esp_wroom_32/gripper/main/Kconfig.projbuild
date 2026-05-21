@@ -1,14 +1,17 @@
-# put here your custom config value
-menu "Example Configuration"
-config ESP_WIFI_SSID
-    string "WiFi SSID"
-    default "myssid"
-    help
-	SSID (network name) for the example to connect to.
+menu "Gripper Configuration"
 
-config ESP_WIFI_PASSWORD
-    string "WiFi Password"
-    default "mypassword"
+config GRIPPER_OPEN_GAP_MM
+    int "Open gripper gap in millimeters"
+    range 1 300
+    default 80
     help
-	WiFi password (WPA or WPA2) for the example to use.
+        Gap represented by the fully open arm encoder position.
+
+config GRIPPER_CLOSED_GAP_MM
+    int "Closed gripper gap in millimeters"
+    range 0 300
+    default 0
+    help
+        Gap represented by the fully closed arm encoder position.
+
 endmenu

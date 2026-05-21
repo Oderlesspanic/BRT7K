@@ -6,8 +6,8 @@ hardware_supervisor:
 
     device_names:
       - esp32_drive
-      - esp32_sensors
-      - esp32_power
+      - esp32_gripper
+      - esp32_monitor
       - lidar
       - camera_csi
       - imu

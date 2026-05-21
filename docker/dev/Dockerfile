@@ -39,5 +39,3 @@ RUN apt-get update && apt-get install -y \
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
 
 WORKDIR /ros2_ws
-
-CMD ["bash"]
