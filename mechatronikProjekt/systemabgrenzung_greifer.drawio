@@ -1,0 +1,69 @@
+<mxfile host="app.diagrams.net" modified="2026-05-22T00:00:00.000Z" agent="Claude" version="24.0.0">
+  <diagram name="Systemabgrenzung Greifer" id="sysabgrenzung">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="legend" value="&lt;b&gt;Flussarten&lt;/b&gt;&lt;br&gt;&lt;font color='#E24B4A'&gt;&#9644;&#9644;&lt;/font&gt; Energie (Strom, W&#228;rme)&lt;br&gt;&lt;font color='#378ADD'&gt;&#9644;&#9644;&lt;/font&gt; Information / Signale&lt;br&gt;&lt;font color='#639922'&gt;&#9644;&#9644;&lt;/font&gt; Stofffluss (Werkst&#252;ck)&lt;br&gt;&lt;font color='#888780'&gt;&#9644;&#9644;&lt;/font&gt; Mechanische Kopplung" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B4B2A9;align=left;verticalAlign=top;fontColor=#2C2C2A;spacing=8;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="steuerung" value="&lt;b&gt;&#220;bergeordnete Steuerung&lt;/b&gt;&lt;br&gt;&lt;font color='#5F5E5A'&gt;Mikrocontroller / SPS&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#888780;fontColor=#2C2C2A;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="40" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="versorgung" value="&lt;b&gt;12 V DC&lt;/b&gt;&lt;br&gt;Versorgung" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#888780;fontColor=#2C2C2A;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="140" height="64" as="geometry" />
+        </mxCell>
+
+        <mxCell id="werkstueck" value="&lt;b&gt;Werkst&#252;ck&lt;/b&gt;&lt;br&gt;(Greifobjekt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#888780;fontColor=#2C2C2A;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="320" width="140" height="64" as="geometry" />
+        </mxCell>
+
+        <mxCell id="montage" value="&lt;b&gt;Montagestruktur&lt;/b&gt;&lt;br&gt;Roboterarm / Gestell" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#888780;fontColor=#2C2C2A;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="600" width="240" height="64" as="geometry" />
+        </mxCell>
+
+        <mxCell id="system" value="&lt;b&gt;Systemgrenze: Mechatronischer Greifer&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F7F4;strokeColor=#888780;dashed=1;dashPattern=8 4;verticalAlign=top;fontColor=#2C2C2A;arcSize=4;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="260" y="180" width="400" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="aktorik" value="&lt;b&gt;Antriebe &#8212; 3&#215; Maxon-Motor (12 V)&lt;/b&gt;&lt;br&gt;2&#215; Greifarm-Motor &#183; 1&#215; Hub-Motor&lt;br&gt;Encoder + Planetengetriebe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAEEDA;strokeColor=#BA7517;fontColor=#633806;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="290" y="240" width="340" height="84" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mechanik" value="&lt;b&gt;Mechanik / Kinematik&lt;/b&gt;&lt;br&gt;2&#215; Greifarm &#183; Hubplattform &#183; T5-Riemen&lt;br&gt;Linearf&#252;hrungen LM8UU (&#216; 8 mm)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1EFE8;strokeColor=#5F5E5A;fontColor=#2C2C2A;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="290" y="338" width="340" height="84" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sensorik" value="&lt;b&gt;Sensorik / Signalerfassung&lt;/b&gt;&lt;br&gt;3&#215; W&#228;gezelle &#8594; 3&#215; NAU7802 ADC&lt;br&gt;I&#178;C-Multiplexer (Adafruit / TCA9548A)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5EE;strokeColor=#0F6E56;fontColor=#085041;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="290" y="436" width="340" height="84" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_info" value="I&#178;C-Bus / Motorsignale" style="edgeStyle=none;rounded=0;html=1;strokeColor=#378ADD;strokeWidth=2;startArrow=classic;startFill=1;endArrow=classic;endFill=1;fontColor=#0C447C;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="steuerung" target="system">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_power" value="12 V DC" style="edgeStyle=none;rounded=0;html=1;strokeColor=#E24B4A;strokeWidth=2;startArrow=none;endArrow=classic;endFill=1;fontColor=#A32D2D;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.45;entryDx=0;entryDy=0;" edge="1" parent="1" source="versorgung" target="system">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_heat" value="Abw&#228;rme" style="edgeStyle=none;rounded=0;html=1;strokeColor=#E24B4A;strokeWidth=2;dashed=1;startArrow=none;endArrow=classic;endFill=1;fontColor=#A32D2D;fontSize=11;exitX=0;exitY=0.78;exitDx=0;exitDy=0;" edge="1" parent="1" source="system">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="461" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e_object" value="Greifobjekt" style="edgeStyle=none;rounded=0;html=1;strokeColor=#639922;strokeWidth=2;startArrow=classic;startFill=1;endArrow=classic;endFill=1;fontColor=#3B6D11;fontSize=11;exitX=1;exitY=0.45;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="system" target="werkstueck">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_mech" value="Befestigung / Reaktionskr&#228;fte" style="edgeStyle=none;rounded=0;html=1;strokeColor=#888780;strokeWidth=2;startArrow=classic;startFill=1;endArrow=classic;endFill=1;fontColor=#5F5E5A;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="system" target="montage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
