@@ -13,12 +13,15 @@ def generate_launch_description():
         'ekf.yaml'
     )
 
-    imu_node = Node(
+    ekf_node = Node(
         package='robot_localization',
         executable='ekf_node',
         name='ekf_filter_node',
         output='screen',
-        parameters=[config_file]
+        parameters=[config_file],
+        remappings=[
+            ('/odometry/filtered', '/odom'),
+        ]
     )
 
     return LaunchDescription([

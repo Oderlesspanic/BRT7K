@@ -1,7 +1,16 @@
 camera_node:
   ros__parameters:
-    frame_id: "camera_optical_frame"
+    frame_id: "camera_optical_link"
     topic_name: "/camera/image_raw"
+    camera_info_topic: "/camera/camera_info"
     width: 640
     height: 480
     fps: 30
+
+    # Kamera-Intrinsics. 0.0 nutzt einfache Defaults basierend auf der Bildgroesse.
+    fx: 0.0
+    fy: 0.0
+    cx: 0.0
+    cy: 0.0
+    distortion_model: "plumb_bob"
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]

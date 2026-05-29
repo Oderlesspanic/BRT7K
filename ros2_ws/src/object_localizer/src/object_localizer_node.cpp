@@ -9,7 +9,7 @@ ObjectLocalizerNode::ObjectLocalizerNode()
 : Node("object_localizer_node")
 {
   this->declare_parameter<std::string>("target_frame", "map");
-  this->declare_parameter<std::string>("camera_frame", "camera_link");
+  this->declare_parameter<std::string>("camera_frame", "camera_optical_link");
   this->declare_parameter<double>("ground_z", 0.0);
 
   this->declare_parameter<double>("objects.default.size_x", 0.10);

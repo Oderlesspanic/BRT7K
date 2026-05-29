@@ -6,7 +6,7 @@ Topics:
         /camera/image_raw                (sensor_msgs/Image)
     Publish:
         /room_vision/image_annotated     (sensor_msgs/Image)
-        /room_vision/detections          (interfaces/CameraDetectionArray)
+        /room_vision/detections          (vision_msgs/Detection2DArray)
 
 Parameter (per ros2 param oder Launch-File ueberschreibbar):
     model_path          : absoluter Pfad zu best.onnx
@@ -38,8 +38,7 @@ import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from vision_msgs.msg import BoundingBox2D
-from interfaces.msg import CameraDetection, CameraDetectionArray
+from vision_msgs.msg import BoundingBox2D, Detection2D, Detection2DArray, ObjectHypothesisWithPose
 
 try:
     # optional — nur zum Auffinden des Default-Modellpfads im installierten Paket
@@ -101,7 +100,7 @@ class YoloDetectorNode(Node):
             Image, input_topic, self._on_image, 10
         )
         self.pub_image = self.create_publisher(Image, image_out_topic, 10)
-        self.pub_detections = self.create_publisher(CameraDetectionArray, det_out_topic, 10)
+        self.pub_detections = self.create_publisher(Detection2DArray, det_out_topic, 10)
 
         self.get_logger().info(
             f"Subscribed:  {input_topic}\n"
@@ -238,8 +237,8 @@ class YoloDetectorNode(Node):
             raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
         )
 
-        # --- CameraDetectionArray zusammenbauen + Boxen zeichnen ----------------
-        det_array = CameraDetectionArray()
+        # --- Detection2DArray zusammenbauen + Boxen zeichnen ----------------
+        det_array = Detection2DArray()
         det_array.header = msg.header  # gleicher frame_id/stamp wie die Kamera
 
         annotated = frame.copy()
@@ -273,7 +272,7 @@ class YoloDetectorNode(Node):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
             )
 
-            det = CameraDetection()
+            det = Detection2D()
             det.header = msg.header
             bbox = BoundingBox2D()
             bbox.center.position.x = float((x1 + x2) / 2.0)
@@ -282,8 +281,12 @@ class YoloDetectorNode(Node):
             bbox.size_x = float(x2 - x1)
             bbox.size_y = float(y2 - y1)
             det.bbox = bbox
-            det.class_name = name
-            det.confidence = float(score)
+
+            result = ObjectHypothesisWithPose()
+            result.hypothesis.class_id = name
+            result.hypothesis.score = float(score)
+            det.results.append(result)
+
             det_array.detections.append(det)
 
         # Fadenkreuz zuletzt zeichnen (liegt ueber allem)

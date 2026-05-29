@@ -9,13 +9,37 @@ using namespace std::chrono_literals;
 CameraNode::CameraNode()
 : Node("camera_node")
 {
-    frame_id_ = this->declare_parameter<std::string>("frame_id", "camera_optical_frame");
+    frame_id_ = this->declare_parameter<std::string>("frame_id", "camera_optical_link");
     topic_name_ = this->declare_parameter<std::string>("topic_name", "/camera/image_raw");
+    camera_info_topic_ = this->declare_parameter<std::string>("camera_info_topic", "/camera/camera_info");
     width_ = this->declare_parameter<int>("width", 640);
     height_ = this->declare_parameter<int>("height", 480);
     fps_ = this->declare_parameter<int>("fps", 30);
+    fx_ = this->declare_parameter<double>("fx", 0.0);
+    fy_ = this->declare_parameter<double>("fy", 0.0);
+    cx_ = this->declare_parameter<double>("cx", 0.0);
+    cy_ = this->declare_parameter<double>("cy", 0.0);
+    distortion_model_ = this->declare_parameter<std::string>("distortion_model", "plumb_bob");
+    distortion_coefficients_ = this->declare_parameter<std::vector<double>>(
+        "distortion_coefficients",
+        std::vector<double>{0.0, 0.0, 0.0, 0.0, 0.0});
+
+    if (fx_ <= 0.0) {
+        fx_ = static_cast<double>(width_);
+    }
+    if (fy_ <= 0.0) {
+        fy_ = static_cast<double>(width_);
+    }
+    if (cx_ <= 0.0) {
+        cx_ = static_cast<double>(width_) * 0.5;
+    }
+    if (cy_ <= 0.0) {
+        cy_ = static_cast<double>(height_) * 0.5;
+    }
 
     image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name_, 10);
+    camera_info_pub_ =
+        this->create_publisher<sensor_msgs::msg::CameraInfo>(camera_info_topic_, 10);
 
     driver_ = std::make_shared<LibcameraDriver>();
 
@@ -61,4 +85,24 @@ void CameraNode::timer_callback()
     msg.data = std::move(frame);
 
     image_pub_->publish(msg);
+
+    sensor_msgs::msg::CameraInfo info_msg;
+    info_msg.header = msg.header;
+    info_msg.height = msg.height;
+    info_msg.width = msg.width;
+    info_msg.distortion_model = distortion_model_;
+    info_msg.d = distortion_coefficients_;
+    info_msg.k = {
+        fx_, 0.0, cx_,
+        0.0, fy_, cy_,
+        0.0, 0.0, 1.0};
+    info_msg.r = {
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0};
+    info_msg.p = {
+        fx_, 0.0, cx_, 0.0,
+        0.0, fy_, cy_, 0.0,
+        0.0, 0.0, 1.0, 0.0};
+    camera_info_pub_->publish(info_msg);
 }

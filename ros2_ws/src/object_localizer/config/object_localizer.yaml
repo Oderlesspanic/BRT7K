@@ -1,7 +1,7 @@
 object_localizer_node:
   ros__parameters:
     target_frame: "map"
-    camera_frame: "camera_link"
+    camera_frame: "camera_optical_link"
 
     # Bodenhöhe im target_frame
     ground_z: 0.0
