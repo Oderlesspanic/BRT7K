@@ -19,7 +19,6 @@ def generate_launch_description():
     object_manager_launch = os.path.join(object_manager_dir, "launch", "object_manager.launch.py")
     object_task_executor_launch = os.path.join(object_task_executor_dir, "launch", "object_task_executor.launch.py")
     room_vision_launch = os.path.join(room_vision_dir, "launch", "room_vision.launch.py")
-    detector_launch = os.path.join(room_vision_dir, "launch", "detector.launch.py")
     object_localizer_launch = os.path.join(object_localizer_dir, "launch", "object_localizer.launch.py")
     edge_color_launch = os.path.join(edge_color_dir, "launch", "edge_color.launch.py")
 
@@ -42,10 +41,6 @@ def generate_launch_description():
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(room_vision_launch)
-        ),
-
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(detector_launch)
         ),
 
         IncludeLaunchDescription(

@@ -12,4 +12,4 @@ wheel_odometry_node:
     wheel_radius: 0.05
     wheel_separation: 0.30
 
-    publish_tf: true
+    publish_tf: false
