@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+
+"""Ein einfacher Task Manager Node, der mehrere ROS 2 Launch Dateien verwalten kann.
+Er ermöglicht das Starten, Stoppen und Neustarten von vordefinierten Launch Dateien
+über ROS 2 Services oder durch das Senden von Befehlen an ein Topic.
+
+Die zu verwaltenden Launch Dateien werden über den Parameter 'launch_targets' definiert,
+der eine Liste von Strings im Format 'name:package:launch_file[:arg:=value ...]' erwartet.
+Beispiel:
+    launch_targets:
+        - description:robot_bringup:description.launch.py
+        - web:robot_bringup:web.launch.py
+        - hardware:robot_bringup:hardware.launch.py
+        - vision:robot_bringup:vision.launch.py
+        - odometry:robot_bringup:odometry.launch.py
+        - mapping:robot_bringup:mapping.launch.py
+        - navigation:navigation:navigation.launch.py
+        - map_saver:mapping:map_saver.launch.py
+
+Der Node bietet die folgenden ROS 2 Services:
+- ~/status (Trigger): Gibt den aktuellen Status aller verwalteten Launch Dateien zurück.
+- ~/start_all (Trigger): Startet alle verwalteten Launch Dateien.
+- ~/stop_all (Trigger): Stoppt alle verwalteten Launch Dateien.
+- ~/restart_all (Trigger): Startet alle verwalteten Launch Dateien neu.
+- ~/start_<target> (Trigger): Startet die angegebene Launch Datei.
+- ~/stop_<target> (Trigger): Stoppt die angegebene Launch Datei.
+- ~/restart_<target> (Trigger): Startet die angegebene Launch Datei neu.
+
+Der Node veröffentlicht außerdem regelmäßig den Status aller verwalteten Launch Dateien auf dem Topic '~/status_text' (String).
+Beispielbefehle über das Topic '~/command':
+- "status": Gibt den aktuellen Status aller Launch Dateien zurück.
+- "start <target>": Startet die angegebene Launch Datei.
+- "stop <target>": Stoppt die angegebene Launch Datei.
+- "restart <target>": Startet die angegebene Launch Datei neu.
+- "start all": Startet alle Launch Dateien.
+- "stop all": Stoppt alle Launch Dateien.
+- "restart all": Startet alle Launch Dateien neu.
+
+Beispielaufrufe der Services:
+
+ros2 service call /task_manager/start_description std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_web std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_hardware std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_vision std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_odometry std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_mapping std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_navigation std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_map_saver std_srvs/srv/Trigger {}
+
+ros2 service call /task_manager/stop_description std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_web std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_hardware std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_vision std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_odometry std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_mapping std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_navigation std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_map_saver std_srvs/srv/Trigger {}
+
+ros2 service call /task_manager/status std_srvs/srv/Trigger {}
+ros2 service call /task_manager/start_all std_srvs/srv/Trigger {}
+ros2 service call /task_manager/stop_all std_srvs/srv/Trigger {}
+ros2 service call /task_manager/restart_all std_srvs/srv/Trigger {}
+
+
+
+"""
+
+
+import os
+import signal
+import subprocess
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from std_srvs.srv import Trigger
+
+
+@dataclass(frozen=True)
+class LaunchTarget:
+    name: str
+    package: str
+    launch_file: str
+    arguments: Tuple[str, ...] = ()
+
+
+class ManagedLaunch:
+    def __init__(self, target: LaunchTarget) -> None:
+        self.target = target
+        self.process: Optional[subprocess.Popen] = None
+
+    def is_running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def returncode(self) -> Optional[int]:
+        if self.process is None:
+            return None
+        return self.process.poll()
+
+
+class TaskManagerNode(Node):
+    def __init__(self) -> None:
+        super().__init__("task_manager")
+
+        self._targets = self._load_targets()
+        self._managed: Dict[str, ManagedLaunch] = {
+            target.name: ManagedLaunch(target) for target in self._targets
+        }
+
+        self._status_pub = self.create_publisher(String, "~/status_text", 10)
+        self._command_sub = self.create_subscription(
+            String,
+            "~/command",
+            self._handle_command,
+            10,
+        )
+
+        self.create_service(Trigger, "~/status", self._status_service)
+        self.create_service(Trigger, "~/start_all", self._start_all_service)
+        self.create_service(Trigger, "~/stop_all", self._stop_all_service)
+        self.create_service(Trigger, "~/restart_all", self._restart_all_service)
+
+        for name in self._managed:
+            self.create_service(
+                Trigger,
+                f"~/start_{name}",
+                self._make_target_service(name, "start"),
+            )
+            self.create_service(
+                Trigger,
+                f"~/stop_{name}",
+                self._make_target_service(name, "stop"),
+            )
+            self.create_service(
+                Trigger,
+                f"~/restart_{name}",
+                self._make_target_service(name, "restart"),
+            )
+
+        self.create_timer(2.0, self._publish_status)
+
+        target_names = ", ".join(self._managed.keys())
+        self.get_logger().info(f"Task Manager gestartet. Targets: {target_names}")
+
+    def _load_targets(self) -> List[LaunchTarget]:
+        default_specs = [
+            "description:robot_bringup:description.launch.py",
+            "web:robot_bringup:web.launch.py",
+            "hardware:robot_bringup:hardware.launch.py",
+            "vision:robot_bringup:vision.launch.py",
+            "odometry:robot_bringup:odometry.launch.py",
+            "mapping:robot_bringup:mapping.launch.py",
+            "navigation:navigation:navigation.launch.py",
+            "map_saver:mapping:map_saver.launch.py",
+        ]
+
+        self.declare_parameter("launch_targets", default_specs)
+        specs = self.get_parameter("launch_targets").value
+
+        targets: List[LaunchTarget] = []
+        for spec in specs:
+            parsed = self._parse_target_spec(str(spec))
+            if parsed is None:
+                self.get_logger().warn(
+                    "Ignoriere ungueltiges launch_targets-Element: "
+                    f"'{spec}'. Format: name:package:launch_file[:arg:=value ...]"
+                )
+                continue
+            targets.append(parsed)
+
+        return targets
+
+    def _parse_target_spec(self, spec: str) -> Optional[LaunchTarget]:
+        parts = spec.split(":", maxsplit=3)
+        if len(parts) < 3:
+            return None
+
+        name = parts[0].strip()
+        package = parts[1].strip()
+        launch_file = parts[2].strip()
+        if not name or not package or not launch_file:
+            return None
+
+        arguments: Tuple[str, ...] = ()
+        if len(parts) == 4 and parts[3].strip():
+            arguments = tuple(parts[3].split())
+
+        return LaunchTarget(name, package, launch_file, arguments)
+
+    def _make_target_service(self, target_name: str, action: str):
+        def callback(request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+            del request
+            success, message = self._execute_action(action, target_name)
+            response.success = success
+            response.message = message
+            return response
+
+        return callback
+
+    def _status_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        response.success = True
+        response.message = self._status_text()
+        return response
+
+    def _start_all_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        results = [self._start_target(name)[1] for name in self._managed]
+        response.success = True
+        response.message = "\n".join(results)
+        return response
+
+    def _stop_all_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        results = [self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))]
+        response.success = True
+        response.message = "\n".join(results)
+        return response
+
+    def _restart_all_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        stop_results = [self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))]
+        start_results = [self._start_target(name)[1] for name in self._managed]
+        response.success = True
+        response.message = "\n".join(stop_results + start_results)
+        return response
+
+    def _handle_command(self, msg: String) -> None:
+        command = msg.data.strip().lower()
+        if not command:
+            return
+
+        parts = command.split()
+        if parts[0] == "status":
+            self.get_logger().info(self._status_text())
+            return
+
+        if len(parts) != 2 or parts[0] not in {"start", "stop", "restart"}:
+            self.get_logger().warn(
+                "Ungueltiger Befehl. Nutze: start <target>, stop <target>, "
+                "restart <target>, start all, stop all, restart all oder status"
+            )
+            return
+
+        success, message = self._execute_action(parts[0], parts[1])
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().warn(message)
+
+    def _execute_action(self, action: str, target_name: str) -> Tuple[bool, str]:
+        if target_name == "all":
+            if action == "start":
+                messages = [self._start_target(name)[1] for name in self._managed]
+                return True, "\n".join(messages)
+            if action == "stop":
+                messages = [
+                    self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))
+                ]
+                return True, "\n".join(messages)
+            messages = [
+                self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))
+            ]
+            messages.extend(self._start_target(name)[1] for name in self._managed)
+            return True, "\n".join(messages)
+
+        if target_name not in self._managed:
+            known = ", ".join(self._managed.keys())
+            return False, f"Unbekanntes Target '{target_name}'. Bekannt: {known}"
+
+        if action == "start":
+            return self._start_target(target_name)
+        if action == "stop":
+            return self._stop_target(target_name)
+        return self._restart_target(target_name)
+
+    def _start_target(self, target_name: str) -> Tuple[bool, str]:
+        managed = self._managed[target_name]
+        if managed.is_running():
+            return True, f"{target_name} laeuft bereits"
+
+        if managed.process is not None:
+            return_code = managed.returncode()
+            if return_code not in (None, 0):
+                self.get_logger().warn(
+                    f"{target_name} war beendet mit Returncode {return_code}; starte neu"
+                )
+
+        command = [
+            "ros2",
+            "launch",
+            managed.target.package,
+            managed.target.launch_file,
+            *managed.target.arguments,
+        ]
+
+        try:
+            managed.process = subprocess.Popen(
+                command,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            managed.process = None
+            return False, f"{target_name} konnte nicht gestartet werden: {exc}"
+
+        return True, f"{target_name} gestartet: {' '.join(command)}"
+
+    def _stop_target(self, target_name: str) -> Tuple[bool, str]:
+        managed = self._managed[target_name]
+        process = managed.process
+
+        if process is None:
+            return True, f"{target_name} ist nicht gestartet"
+
+        if process.poll() is not None:
+            return_code = process.returncode
+            managed.process = None
+            return True, f"{target_name} ist bereits beendet (Returncode {return_code})"
+
+        pid = process.pid
+        try:
+            os.killpg(pid, signal.SIGINT)
+            process.wait(timeout=8.0)
+        except subprocess.TimeoutExpired:
+            self.get_logger().warn(
+                f"{target_name} reagiert nicht auf SIGINT; sende SIGTERM"
+            )
+            try:
+                os.killpg(pid, signal.SIGTERM)
+                process.wait(timeout=4.0)
+            except subprocess.TimeoutExpired:
+                self.get_logger().error(
+                    f"{target_name} reagiert nicht auf SIGTERM; sende SIGKILL"
+                )
+                os.killpg(pid, signal.SIGKILL)
+                process.wait(timeout=2.0)
+        except ProcessLookupError:
+            pass
+        finally:
+            managed.process = None
+
+        return True, f"{target_name} beendet"
+
+    def _restart_target(self, target_name: str) -> Tuple[bool, str]:
+        stop_success, stop_message = self._stop_target(target_name)
+        if not stop_success:
+            return False, stop_message
+
+        start_success, start_message = self._start_target(target_name)
+        return start_success, f"{stop_message}\n{start_message}"
+
+    def _publish_status(self) -> None:
+        msg = String()
+        msg.data = self._status_text()
+        self._status_pub.publish(msg)
+
+    def _status_text(self) -> str:
+        lines = []
+        for name, managed in self._managed.items():
+            if managed.is_running():
+                lines.append(f"{name}: running pid={managed.process.pid}")
+                continue
+
+            return_code = managed.returncode()
+            if return_code is None:
+                lines.append(f"{name}: stopped")
+            else:
+                lines.append(f"{name}: exited returncode={return_code}")
+        return "\n".join(lines)
+
+    def stop_all(self) -> None:
+        for name in reversed(list(self._managed.keys())):
+            self._stop_target(name)
+
+
+def main(args=None) -> None:
+    rclpy.init(args=args)
+    node = TaskManagerNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.stop_all()
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

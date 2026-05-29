@@ -6,21 +6,21 @@ import os
 
 
 def generate_launch_description():
-    imu_dir = get_package_share_directory("robot_imu")
+    imu_dir = get_package_share_directory("imu")
     imu_launch = os.path.join(
         imu_dir,
         "launch",
         "imu.launch.py"
     )
 
-    mmc5603_dir = get_package_share_directory("robot_mmc5603")
+    mmc5603_dir = get_package_share_directory("mmc5603")
     mmc5603_launch = os.path.join(
         mmc5603_dir,
         "launch",
         "mmc5603.launch.py"
     )
 
-    imu_mag_fusion_dir = get_package_share_directory("robot_imu_mag_fusion")
+    imu_mag_fusion_dir = get_package_share_directory("imu_mag_fusion")
     imu_mag_fusion_launch = os.path.join(
         imu_mag_fusion_dir,
         "launch",
