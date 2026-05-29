@@ -27,7 +27,6 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-vision-opencv \
     ros-jazzy-image-transport \
     ros-jazzy-tf-transformations \
-    ros-jazzy-micro-ros-agent \
     ros-jazzy-laser-filters \
     ros-jazzy-message-filters \
     ros-jazzy-vision-msgs \

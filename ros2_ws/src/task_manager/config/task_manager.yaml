@@ -1,0 +1,11 @@
+task_manager:
+  ros__parameters:
+    launch_targets:
+      - "description:robot_bringup:description.launch.py"
+      - "web:robot_bringup:web.launch.py"
+      - "hardware:robot_bringup:hardware.launch.py"
+      - "vision:robot_bringup:vision.launch.py"
+      - "odometry:robot_bringup:odometry.launch.py"
+      - "mapping:robot_bringup:mapping.launch.py"
+      - "navigation:navigation:navigation.launch.py"
+      - "map_saver:mapping:map_saver.launch.py"
