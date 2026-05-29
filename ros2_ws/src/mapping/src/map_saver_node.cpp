@@ -5,7 +5,7 @@ using namespace std::chrono_literals;
 MapSaverNode::MapSaverNode()
 : Node("map_saver_node")
 {
-  this->declare_parameter<std::string>("map_path", "/home/pi/robot_ws/maps/map/arena_map");
+  this->declare_parameter<std::string>("map_path", "/home/pi/BRT7K/ros2_ws/maps/map/arena_map");
 
   this->declare_parameter<bool>("save_on_start", false);
   this->declare_parameter<bool>("shutdown_after_save", true);

@@ -167,11 +167,14 @@ fi
 
 run_as_user "git -C '${REPO_ROOT}' submodule update --init --recursive"
 ROS_WS="${REPO_ROOT}/ros2_ws"
+MAP_DIR="${ROS_WS}/maps/map"
 
 if [[ ! -d "${ROS_WS}/src" ]]; then
   echo "Could not find ROS workspace at ${ROS_WS}" >&2
   exit 1
 fi
+
+install -d -o "${TARGET_USER}" -g "${TARGET_USER}" "${MAP_DIR}"
 
 echo "==> Preparing user permissions"
 for group_name in dialout video i2c gpio render; do
@@ -187,6 +190,9 @@ if ! grep -q "/opt/ros/${ROS_DISTRO}/setup.bash" "${USER_HOME}/.bashrc"; then
 fi
 if ! grep -q "${ROS_WS}/install/setup.bash" "${USER_HOME}/.bashrc"; then
   echo "[[ -f ${ROS_WS}/install/setup.bash ]] && source ${ROS_WS}/install/setup.bash" >> "${USER_HOME}/.bashrc"
+fi
+if ! grep -q "BRT7K_MAP_DIR=" "${USER_HOME}/.bashrc"; then
+  echo "export BRT7K_MAP_DIR=${MAP_DIR}" >> "${USER_HOME}/.bashrc"
 fi
 chown "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.bashrc"
 
@@ -212,6 +218,7 @@ set -euo pipefail
 source /opt/ros/${ROS_DISTRO}/setup.bash
 source "${ROS_WS}/install/setup.bash"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID_VALUE}"
+export BRT7K_MAP_DIR="${MAP_DIR}"
 
 cd "${ROS_WS}"
 
@@ -233,8 +240,9 @@ for _ in {1..60}; do
   sleep 1
 done
 
-# Mapping is intentionally not started here. It remains a web-GUI action.
-for target in description web hardware vision odometry navigation; do
+# Mapping and normal navigation are intentionally not started here.
+# Mapping remains a web-GUI action; navigation starts after finish_mapping saved a map.
+for target in description web hardware vision odometry; do
   ros2 service call "/task_manager/start_\${target}" std_srvs/srv/Trigger "{}" || true
   sleep 1
 done
@@ -255,6 +263,7 @@ Type=simple
 User=${TARGET_USER}
 WorkingDirectory=${ROS_WS}
 Environment=ROS_DOMAIN_ID=${ROS_DOMAIN_ID_VALUE}
+Environment=BRT7K_MAP_DIR=${MAP_DIR}
 ExecStart=/usr/local/bin/brt7k_robot_autostart.sh
 Restart=on-failure
 RestartSec=5

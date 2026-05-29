@@ -18,10 +18,18 @@ def generate_launch_description():
     )
 
     map_file = LaunchConfiguration("map")
+    default_map_dir = os.environ.get(
+        "BRT7K_MAP_DIR",
+        os.path.join(os.path.expanduser("~"), "BRT7K", "ros2_ws", "maps", "map"),
+    )
+    default_map_file = os.environ.get(
+        "BRT7K_MAP_FILE",
+        os.path.join(default_map_dir, "arena_map.yaml"),
+    )
 
     declare_map = DeclareLaunchArgument(
         "map",
-        default_value="/home/pi/robot_ws/maps/map/arena_map.yaml",
+        default_value=default_map_file,
         description="Full path to map yaml file"
     )
 

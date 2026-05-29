@@ -1,5 +1,5 @@
 map_saver_node:
   ros__parameters:
-    map_path: "/home/pi/robot_ws/maps/map/arena_map"
+    map_path: "/home/pi/BRT7K/ros2_ws/maps/map/arena_map"
     save_on_start: true
     shutdown_after_save: true
