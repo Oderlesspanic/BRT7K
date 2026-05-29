@@ -9,6 +9,7 @@
         close: [],
         message: [],
       };
+      this.serviceCallbacks = {};
       this.connect(this.url);
     }
 
@@ -30,7 +31,15 @@
 
       this.socket.addEventListener("message", (event) => {
         try {
-          this.emit("message", JSON.parse(event.data));
+          const message = JSON.parse(event.data);
+          if (message.op === "service_response" && message.id) {
+            const callback = this.serviceCallbacks[message.id];
+            if (callback) {
+              delete this.serviceCallbacks[message.id];
+              callback(message.values, message.result);
+            }
+          }
+          this.emit("message", message);
         } catch (error) {
           console.error("rosbridge message parse failed:", error);
         }
@@ -95,6 +104,28 @@
     }
   }
 
+  class Service {
+    constructor(options) {
+      this.ros = options.ros;
+      this.name = options.name;
+      this.serviceType = options.serviceType;
+    }
+
+    callService(request = {}, callback = () => {}) {
+      const id =
+        `${this.name}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+      this.ros.serviceCallbacks[id] = callback;
+      this.ros.sendEncoded({
+        op: "call_service",
+        id,
+        service: this.name,
+        type: this.serviceType,
+        args: request,
+      });
+    }
+  }
+
   class Message {
     constructor(values = {}) {
       Object.assign(this, values);
@@ -104,6 +135,7 @@
   window.ROSLIB = {
     Ros,
     Topic,
+    Service,
     Message,
   };
 })();

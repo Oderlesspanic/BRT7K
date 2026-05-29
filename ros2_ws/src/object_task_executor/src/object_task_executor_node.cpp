@@ -14,6 +14,11 @@ ObjectTaskExecutorNode::ObjectTaskExecutorNode()
   this->declare_parameter<std::string>("objects_topic", "/objects");
   this->declare_parameter<std::string>("corners_topic", "/corners");
   this->declare_parameter<std::string>("command_topic", "/object_place_command");
+  this->declare_parameter<std::string>("robot_pose_topic", "/amcl_pose");
+  this->declare_parameter<std::string>("cancel_service", "/object_task_executor/cancel_task");
+  this->declare_parameter<std::string>(
+    "update_object_pose_service",
+    "/object_manager/update_object_pose");
   this->declare_parameter<std::string>("gripper_command_topic", "/gripper/command");
   this->declare_parameter<std::string>("platform_command_topic", "/platform/command");
   this->declare_parameter<std::string>("status_topic", "/object_task_executor/status");
@@ -58,6 +63,12 @@ ObjectTaskExecutorNode::ObjectTaskExecutorNode()
       10,
       std::bind(&ObjectTaskExecutorNode::commandCallback, this, std::placeholders::_1));
 
+  robot_pose_sub_ =
+    this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      this->get_parameter("robot_pose_topic").as_string(),
+      10,
+      std::bind(&ObjectTaskExecutorNode::robotPoseCallback, this, std::placeholders::_1));
+
   gripper_command_pub_ =
     this->create_publisher<std_msgs::msg::String>(
       this->get_parameter("gripper_command_topic").as_string(),
@@ -75,6 +86,19 @@ ObjectTaskExecutorNode::ObjectTaskExecutorNode()
 
   navigate_client_ =
     rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
+
+  update_object_pose_client_ =
+    this->create_client<interfaces::srv::UpdateObjectPose>(
+      this->get_parameter("update_object_pose_service").as_string());
+
+  cancel_task_service_ =
+    this->create_service<std_srvs::srv::Trigger>(
+      this->get_parameter("cancel_service").as_string(),
+      std::bind(
+        &ObjectTaskExecutorNode::cancelTaskCallback,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
 
   RCLCPP_INFO(this->get_logger(), "Object task executor gestartet");
 }
@@ -115,22 +139,62 @@ void ObjectTaskExecutorNode::commandCallback(
   worker_ = std::thread(&ObjectTaskExecutorNode::executeCommand, this, *msg);
 }
 
+void ObjectTaskExecutorNode::robotPoseCallback(
+  const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(task_mutex_);
+  latest_robot_pose_ = msg->pose.pose;
+}
+
+void ObjectTaskExecutorNode::cancelTaskCallback(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  requestCancel();
+  response->success = true;
+  response->message = task_running_ ? "Abbruch angefordert" : "Kein aktiver Auftrag";
+}
+
 void ObjectTaskExecutorNode::executeCommand(
   interfaces::msg::ObjectPlaceCommand command)
 {
+  {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_ = command;
+    object_picked_up_ = false;
+  }
+  cancel_requested_ = false;
+
   vision_msgs::msg::Detection3D object;
   interfaces::msg::ManagedCorner corner;
 
   if (!resolveCommand(command, object, corner)) {
+    publishStatus("failed");
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_.reset();
     task_running_ = false;
     return;
   }
 
-  std_msgs::msg::String status;
-  status.data = "running";
-  status_pub_->publish(status);
+  publishStatus("running");
 
   if (!navigateTo(object.bbox.center.position, pickup_offset_x_, pickup_offset_y_, "Objekt")) {
+    if (cancel_requested_) {
+      publishStatus("canceled");
+    } else {
+      publishStatus("failed");
+    }
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_.reset();
+    task_running_ = false;
+    return;
+  }
+
+  if (cancel_requested_) {
+    publishStatus("canceled");
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_.reset();
     task_running_ = false;
     return;
   }
@@ -140,8 +204,26 @@ void ObjectTaskExecutorNode::executeCommand(
 
   publishActuatorCommand(platform_command_pub_, platform_up_command_, "Plattform anheben");
   sleepForActuator();
+  object_picked_up_ = true;
+
+  if (cancel_requested_) {
+    dropCurrentObjectAtCurrentPose();
+    publishStatus("canceled");
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_.reset();
+    task_running_ = false;
+    return;
+  }
 
   if (!navigateTo(corner.center_map, dropoff_offset_x_, dropoff_offset_y_, "Ziel-Ecke")) {
+    if (cancel_requested_) {
+      dropCurrentObjectAtCurrentPose();
+      publishStatus("canceled");
+    } else {
+      publishStatus("failed");
+    }
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_.reset();
     task_running_ = false;
     return;
   }
@@ -150,10 +232,14 @@ void ObjectTaskExecutorNode::executeCommand(
   sleepForActuator();
 
   publishActuatorCommand(gripper_command_pub_, gripper_open_command_, "Greifer oeffnen");
+  object_picked_up_ = false;
 
-  status.data = "done";
-  status_pub_->publish(status);
+  publishStatus("done");
   RCLCPP_INFO(this->get_logger(), "Objektauftrag abgeschlossen");
+  {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_command_.reset();
+  }
   task_running_ = false;
 }
 
@@ -214,6 +300,10 @@ bool ObjectTaskExecutorNode::navigateTo(
     return false;
   }
 
+  if (cancel_requested_) {
+    return false;
+  }
+
   NavigateToPose::Goal goal;
   goal.pose = makeGoalPose(point, offset_x, offset_y);
 
@@ -236,8 +326,30 @@ bool ObjectTaskExecutorNode::navigateTo(
     return false;
   }
 
+  if (cancel_requested_) {
+    navigate_client_->async_cancel_goal(goal_handle);
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_goal_handle_ = goal_handle;
+  }
+
   auto result_future = navigate_client_->async_get_result(goal_handle);
-  result_future.wait();
+  while (result_future.wait_for(100ms) != std::future_status::ready) {
+    if (cancel_requested_) {
+      navigate_client_->async_cancel_goal(goal_handle);
+      std::lock_guard<std::mutex> lock(task_mutex_);
+      active_goal_handle_.reset();
+      return false;
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    active_goal_handle_.reset();
+  }
 
   const auto result = result_future.get();
   if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
@@ -276,6 +388,72 @@ void ObjectTaskExecutorNode::publishActuatorCommand(
   msg.data = command;
   publisher->publish(msg);
   RCLCPP_INFO(this->get_logger(), "%s: %s", label.c_str(), command.c_str());
+}
+
+void ObjectTaskExecutorNode::publishStatus(const std::string & status)
+{
+  std_msgs::msg::String msg;
+  msg.data = status;
+  status_pub_->publish(msg);
+}
+
+void ObjectTaskExecutorNode::requestCancel()
+{
+  cancel_requested_ = true;
+
+  GoalHandleNavigateToPose::SharedPtr goal_handle;
+  {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    goal_handle = active_goal_handle_;
+  }
+
+  if (goal_handle) {
+    navigate_client_->async_cancel_goal(goal_handle);
+  }
+}
+
+void ObjectTaskExecutorNode::dropCurrentObjectAtCurrentPose()
+{
+  std::optional<interfaces::msg::ObjectPlaceCommand> command;
+  std::optional<geometry_msgs::msg::Pose> pose;
+
+  {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    command = active_command_;
+    pose = latest_robot_pose_;
+  }
+
+  publishActuatorCommand(platform_command_pub_, platform_down_command_, "Plattform absenken");
+  sleepForActuator();
+
+  publishActuatorCommand(gripper_command_pub_, gripper_open_command_, "Greifer oeffnen");
+  sleepForActuator();
+  object_picked_up_ = false;
+
+  if (command && pose) {
+    updateObjectManagerPose(*command, *pose);
+  } else {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Objekt abgesetzt, aber keine aktive Objekt-/Roboterpose zum Speichern verfuegbar");
+  }
+}
+
+void ObjectTaskExecutorNode::updateObjectManagerPose(
+  const interfaces::msg::ObjectPlaceCommand & command,
+  const geometry_msgs::msg::Pose & pose)
+{
+  if (!update_object_pose_client_->wait_for_service(2s)) {
+    RCLCPP_WARN(this->get_logger(), "Object-Manager-Update-Service nicht erreichbar");
+    return;
+  }
+
+  auto request = std::make_shared<interfaces::srv::UpdateObjectPose::Request>();
+  request->object_id = command.object_id;
+  request->object_name = command.object_name;
+  request->pose = pose;
+
+  update_object_pose_client_->async_send_request(request);
 }
 
 std::string ObjectTaskExecutorNode::getObjectName(

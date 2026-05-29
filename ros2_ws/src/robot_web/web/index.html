@@ -11,37 +11,48 @@
 
 <div class="dashboard">
 
-  <div class="tile">
-    <h2>ROS Status</h2>
-    <div id="rosStatus" class="status disconnected">getrennt</div>
+  <div class="status-column">
+    <div class="tile">
+      <h2>ROS Status</h2>
+      <div id="rosStatus" class="status disconnected">getrennt</div>
+    </div>
+
+    <div class="tile">
+      <h2>Systemstatus</h2>
+
+      <div class="value-row">
+        <span>Batteriespannung</span>
+        <strong id="batteryVoltage">-- V</strong>
+      </div>
+
+      <div class="value-row">
+        <span>Stromverbrauch</span>
+        <strong id="currentDraw">-- A</strong>
+      </div>
+
+      <div class="lamp-grid">
+        <div><span id="lamp_lidar" class="lamp red"></span>Lidar</div>
+        <div><span id="lamp_camera" class="lamp red"></span>Kamera</div>
+        <div><span id="lamp_esp_drive" class="lamp red"></span>ESP Drive</div>
+        <div><span id="lamp_esp_gripper" class="lamp red"></span>ESP Gripper</div>
+        <div><span id="lamp_esp_monitor" class="lamp red"></span>ESP Monitor</div>
+        <div><span id="lamp_imu" class="lamp red"></span>IMU</div>
+        <div><span id="lamp_magnetometer" class="lamp red"></span>Magnetometer</div>
+      </div>
+    </div>
   </div>
 
-  <div class="tile">
-    <h2>Systemstatus</h2>
-
-    <div class="value-row">
-      <span>Batteriespannung</span>
-      <strong id="batteryVoltage">-- V</strong>
-    </div>
-
-    <div class="value-row">
-      <span>Stromverbrauch</span>
-      <strong id="currentDraw">-- A</strong>
-    </div>
-
-    <div class="lamp-grid">
-      <div><span id="lamp_lidar" class="lamp red"></span>Lidar</div>
-      <div><span id="lamp_camera" class="lamp red"></span>Kamera</div>
-      <div><span id="lamp_esp_drive" class="lamp red"></span>ESP Drive</div>
-      <div><span id="lamp_esp_gripper" class="lamp red"></span>ESP Gripper</div>
-      <div><span id="lamp_esp_monitor" class="lamp red"></span>ESP Monitor</div>
-      <div><span id="lamp_imu" class="lamp red"></span>IMU</div>
-      <div><span id="lamp_magnetometer" class="lamp red"></span>Magnetometer</div>
-    </div>
+  <div class="tile map-tile">
+    <h2>Karte</h2>
+    <canvas id="mapCanvas"></canvas>
   </div>
 
   <div class="tile">
     <h2>Steuerung</h2>
+
+    <button id="btnStartMapping" class="start-mapping-button">
+      Start mapping
+    </button>
 
     <label for="speedSlider">Geschwindigkeit</label>
     <input id="speedSlider" type="range" min="0" max="100" value="30">
@@ -77,11 +88,6 @@
     <button id="btnSendObjectCommand" class="send-button">
       Auftrag senden
     </button>
-  </div>
-
-  <div class="tile map-tile">
-    <h2>Karte</h2>
-    <canvas id="mapCanvas"></canvas>
   </div>
 
 </div>

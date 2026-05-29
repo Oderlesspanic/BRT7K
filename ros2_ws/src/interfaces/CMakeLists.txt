@@ -27,6 +27,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
   "msg/ObjectPlaceCommand.msg"
 
+  "srv/UpdateObjectPose.srv"
+
   DEPENDENCIES
     std_msgs
     geometry_msgs
