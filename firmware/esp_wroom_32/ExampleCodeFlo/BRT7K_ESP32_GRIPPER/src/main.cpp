@@ -6,8 +6,8 @@
 #include <rclc/executor.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/empty.h>
+#include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/int32.h>
-#include <control_msgs/msg/gripper_command.h>
 #include "SparkFun_Qwiic_Scale_NAU7802_Arduino_Library.h"
 
 /*
@@ -32,7 +32,7 @@
  * Endstop (Lichtschranke, Lifting top)  GPIO17  RISING
  *
  * ROS Topics:
- *   SUB  /esp32_gripper/command      control_msgs/GripperCommand
+ *   SUB  /esp32_gripper/command      std_msgs/Float32  (target gap in m)
  *   PUB  /esp32_gripper/is_closed    std_msgs/Bool   (on change)
  *   PUB  /esp32_gripper/heartbeat    std_msgs/Empty  (2 Hz)
  *   PUB  /esp32_gripper/lift_weight  std_msgs/Int32  (10 Hz, tared)
@@ -181,7 +181,7 @@ std_msgs__msg__Empty                 heartbeat_msg;
 std_msgs__msg__Int32                 lift_weight_msg;
 std_msgs__msg__Int32                 left_weight_msg;
 std_msgs__msg__Int32                 right_weight_msg;
-control_msgs__msg__GripperCommand    cmd_msg;
+std_msgs__msg__Float32               cmd_msg;
 
 enum class AgentState : uint8_t { WAITING, CONNECTED };
 AgentState urosState = AgentState::WAITING;
@@ -363,9 +363,9 @@ void updateStateMachine() {
 // ═══════════════════════ micro-ROS Callback ═════════════════════
 
 void gripper_cmd_callback(const void* msgin) {
-  const control_msgs__msg__GripperCommand* msg =
-    (const control_msgs__msg__GripperCommand*)msgin;
-  targetPositionM = msg->position;
+  const std_msgs__msg__Float32* msg =
+    (const std_msgs__msg__Float32*)msgin;
+  targetPositionM = msg->data;
   newCommand      = true;
 }
 
@@ -403,7 +403,7 @@ void createEntities() {
 
   rclc_subscription_init_default(
     &cmd_sub, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(control_msgs, msg, GripperCommand),
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
     "/esp32_gripper/command");
 
   rclc_executor_init(&executor, &support.context, 1, &allocator);
@@ -432,7 +432,7 @@ void destroyEntities() {
 
 void setup() {
   // micro-ROS serial transport (UART0 / USB)
-  Serial.begin(115200);
+  set_microros_transports();
   delay(2000);
 
   // Motors
