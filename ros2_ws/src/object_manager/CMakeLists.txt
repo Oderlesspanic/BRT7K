@@ -9,6 +9,7 @@ find_package(ament_cmake REQUIRED)
 
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(vision_msgs REQUIRED)
@@ -24,6 +25,7 @@ add_executable(object_manager_node
 ament_target_dependencies(object_manager_node
   rclcpp
   geometry_msgs
+  interfaces
   sensor_msgs
   visualization_msgs
   vision_msgs

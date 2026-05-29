@@ -143,6 +143,100 @@ function setLamp(name, color) {
 
 let speedPercent = 30;
 let manualMode = true;
+let mappingActive = false;
+let mappingCompleted = false;
+let mappingStoppedByUser = false;
+
+const btnStartMapping = document.getElementById("btnStartMapping");
+const btnManual = document.getElementById("btnManual");
+const btnAuto = document.getElementById("btnAuto");
+const btnSendObjectCommand = document.getElementById("btnSendObjectCommand");
+
+const startMappingService = new ROSLIB.Service({
+  ros: ros,
+  name: "/task_manager/start_mapping",
+  serviceType: "std_srvs/srv/Trigger"
+});
+
+const stopMappingService = new ROSLIB.Service({
+  ros: ros,
+  name: "/task_manager/stop_mapping",
+  serviceType: "std_srvs/srv/Trigger"
+});
+
+const cancelObjectTaskService = new ROSLIB.Service({
+  ros: ros,
+  name: "/object_task_executor/cancel_task",
+  serviceType: "std_srvs/srv/Trigger"
+});
+
+function callTriggerService(service) {
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => {
+      resolve({
+        result: false,
+        success: false,
+        message: "Keine Antwort vom Service"
+      });
+    }, 8000);
+
+    service.callService({}, (response, result) => {
+      window.clearTimeout(timeout);
+      resolve({
+        result,
+        success: Boolean(response && response.success),
+        message: response ? response.message : ""
+      });
+    });
+  });
+}
+
+function updateActionButtons() {
+  const autoMode = !manualMode;
+
+  btnStartMapping.disabled = !autoMode || mappingActive || mappingCompleted;
+  btnStartMapping.classList.toggle("hidden", mappingActive || mappingCompleted);
+
+  btnSendObjectCommand.disabled = !autoMode;
+}
+
+btnStartMapping.addEventListener("click", async () => {
+  if (manualMode || mappingActive || mappingCompleted) return;
+
+  btnStartMapping.disabled = true;
+  const response = await callTriggerService(startMappingService);
+
+  if (response.success) {
+    mappingActive = true;
+    mappingStoppedByUser = false;
+  } else {
+    alert("Mapping konnte nicht gestartet werden: " + response.message);
+  }
+
+  updateActionButtons();
+});
+
+const taskManagerStatusTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/task_manager/status_text",
+  messageType: "std_msgs/String"
+});
+
+taskManagerStatusTopic.subscribe((msg) => {
+  const mappingRunning = /^mapping:\s+running\b/m.test(msg.data);
+
+  if (mappingActive && !mappingRunning && !mappingStoppedByUser) {
+    mappingCompleted = true;
+  }
+
+  mappingActive = mappingRunning;
+
+  if (!mappingRunning && mappingStoppedByUser) {
+    mappingStoppedByUser = false;
+  }
+
+  updateActionButtons();
+});
 
 const speedSlider = document.getElementById("speedSlider");
 const speedValue = document.getElementById("speedValue");
@@ -195,8 +289,9 @@ document.getElementById("btnRight").addEventListener("click", () => {
   sendCmdVel(0.0, -1.0);
 });
 
-document.getElementById("btnStop").addEventListener("click", () => {
+document.getElementById("btnStop").addEventListener("click", async () => {
   sendCmdVel(0.0, 0.0);
+  await stopActiveWork();
 });
 
 // ----------------------------------------------------
@@ -209,29 +304,49 @@ const modeTopic = new ROSLIB.Topic({
   messageType: "std_msgs/String"
 });
 
-document.getElementById("btnManual").addEventListener("click", () => {
+async function stopActiveWork() {
+  await callTriggerService(cancelObjectTaskService);
+
+  if (mappingActive) {
+    mappingStoppedByUser = true;
+    await callTriggerService(stopMappingService);
+    mappingActive = false;
+  }
+
+  updateActionButtons();
+}
+
+btnManual.addEventListener("click", async () => {
+  await stopActiveWork();
+
   manualMode = true;
 
-  document.getElementById("btnManual").classList.add("active");
-  document.getElementById("btnAuto").classList.remove("active");
+  btnManual.classList.add("active");
+  btnAuto.classList.remove("active");
 
   modeTopic.publish(new ROSLIB.Message({
     data: "manual"
   }));
+
+  updateActionButtons();
 });
 
-document.getElementById("btnAuto").addEventListener("click", () => {
+btnAuto.addEventListener("click", () => {
   sendCmdVel(0.0, 0.0);
 
   manualMode = false;
 
-  document.getElementById("btnAuto").classList.add("active");
-  document.getElementById("btnManual").classList.remove("active");
+  btnAuto.classList.add("active");
+  btnManual.classList.remove("active");
 
   modeTopic.publish(new ROSLIB.Message({
     data: "auto"
   }));
+
+  updateActionButtons();
 });
+
+updateActionButtons();
 
 // ----------------------------------------------------
 // Objekt- und Ecken-Auswahl
@@ -482,7 +597,12 @@ const objectCommandTopic = new ROSLIB.Topic({
   messageType: "interfaces/ObjectPlaceCommand"
 });
 
-document.getElementById("btnSendObjectCommand").addEventListener("click", () => {
+btnSendObjectCommand.addEventListener("click", () => {
+  if (manualMode) {
+    alert("Auftrag kann nur im Automatikmodus gesendet werden.");
+    return;
+  }
+
   if (!selectedObject || !selectedCorner) {
     alert("Bitte Objekt und Ziel-Ecke auswählen.");
     return;

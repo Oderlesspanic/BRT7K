@@ -32,6 +32,17 @@ ObjectManagerNode::ObjectManagerNode()
       )
     );
 
+  update_object_pose_service_ =
+    this->create_service<interfaces::srv::UpdateObjectPose>(
+      "/object_manager/update_object_pose",
+      std::bind(
+        &ObjectManagerNode::updateObjectPoseCallback,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2
+      )
+    );
+
   objects_pub_ =
     this->create_publisher<vision_msgs::msg::Detection3DArray>(
       "/objects",
@@ -76,6 +87,53 @@ void ObjectManagerNode::localizedObjectsCallback(
   publishPoseArray();
   publishMarkers();
   publishObstacleCloud();
+}
+
+void ObjectManagerNode::updateObjectPoseCallback(
+  const std::shared_ptr<interfaces::srv::UpdateObjectPose::Request> request,
+  std::shared_ptr<interfaces::srv::UpdateObjectPose::Response> response)
+{
+  ManagedObject * object = nullptr;
+
+  if (request->object_id >= 0) {
+    for (auto & candidate : objects_) {
+      if (candidate.id == request->object_id) {
+        object = &candidate;
+        break;
+      }
+    }
+
+    if (object == nullptr && static_cast<size_t>(request->object_id) < objects_.size()) {
+      object = &objects_[request->object_id];
+    }
+  }
+
+  if (object == nullptr && !request->object_name.empty()) {
+    for (auto & candidate : objects_) {
+      if (candidate.class_name == request->object_name && !candidate.collected) {
+        object = &candidate;
+        break;
+      }
+    }
+  }
+
+  if (object == nullptr) {
+    response->success = false;
+    response->message = "Objekt nicht gefunden";
+    return;
+  }
+
+  object->pose = request->pose;
+  object->selected = false;
+  object->collected = false;
+
+  publishObjects();
+  publishPoseArray();
+  publishMarkers();
+  publishObstacleCloud();
+
+  response->success = true;
+  response->message = "Objektpose aktualisiert";
 }
 
 int ObjectManagerNode::findNearestObject(

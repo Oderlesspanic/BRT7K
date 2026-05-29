@@ -1,11 +1,13 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 
 #include "geometry_msgs/msg/pose_array.hpp"
+#include "interfaces/srv/update_object_pose.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
@@ -37,6 +39,10 @@ private:
   void localizedObjectsCallback(
     const vision_msgs::msg::Detection3DArray::SharedPtr msg);
 
+  void updateObjectPoseCallback(
+    const std::shared_ptr<interfaces::srv::UpdateObjectPose::Request> request,
+    std::shared_ptr<interfaces::srv::UpdateObjectPose::Response> response);
+
   int findNearestObject(
     const vision_msgs::msg::Detection3D & detection) const;
 
@@ -58,6 +64,7 @@ private:
   std::vector<ManagedObject> objects_;
 
   rclcpp::Subscription<vision_msgs::msg::Detection3DArray>::SharedPtr localized_objects_sub_;
+  rclcpp::Service<interfaces::srv::UpdateObjectPose>::SharedPtr update_object_pose_service_;
 
   rclcpp::Publisher<vision_msgs::msg::Detection3DArray>::SharedPtr objects_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pose_array_pub_;
