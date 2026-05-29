@@ -18,21 +18,22 @@ def generate_launch_description():
             name="rosbridge_websocket",
             output="screen",
             parameters=[{
+                "address": "0.0.0.0",
                 "port": 9090
             }]
         ),
 
         ExecuteProcess(
-    cmd=[
-        "python3",
-        "-m",
-        "http.server",
-        "8080",
-        "--bind",
-        "0.0.0.0",
-        "--directory",
-        web_dir
-    ],
-    output="screen"
-)
+            cmd=[
+                "python3",
+                "-m",
+                "http.server",
+                "8080",
+                "--bind",
+                "0.0.0.0",
+                "--directory",
+                web_dir
+            ],
+            output="screen"
+        )
     ])
