@@ -496,6 +496,7 @@ document.getElementById("btnSendObjectCommand").addEventListener("click", () => 
       },
       frame_id: "map"
     },
+    object_id: selectedObject.id,
     object_name: selectedObject.name,
     corner_uid: selectedCorner.corner_uid,
     mode: manualMode ? "manual" : "auto"

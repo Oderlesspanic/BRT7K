@@ -1,24 +1,24 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>object_manager</name>
+  <name>object_task_executor</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Executes object-to-corner transport tasks from the web GUI.</description>
   <maintainer email="dachs.wild@hotmail.com">root</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
   <depend>geometry_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>visualization_msgs</depend>
-  <depend>vision_msgs</depend>
-  <depend>std_msgs</depend>
-
+  <depend>interfaces</depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  
+  <depend>nav2_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>vision_msgs</depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

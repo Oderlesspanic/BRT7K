@@ -1,7 +1,7 @@
 #include "object_manager/object_manager_node.hpp"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
