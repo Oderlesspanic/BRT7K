@@ -28,7 +28,7 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(sllidar_launch),
             launch_arguments={
-                "serial_port": "/dev/ttyUSB0",
+                "serial_port": "/dev/lidar",
                 "serial_baudrate": "115200",
                 "frame_id": "laser_link"
             }.items()
