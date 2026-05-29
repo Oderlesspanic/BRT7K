@@ -13,6 +13,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(std_srvs REQUIRED)
 
 add_executable(frontier_explorer_node
   src/main.cpp
@@ -31,6 +32,7 @@ ament_target_dependencies(frontier_explorer_node
   nav_msgs
   geometry_msgs
   nav2_msgs
+  std_srvs
 )
 
 install(TARGETS

@@ -8,10 +8,12 @@ MapSaverNode::MapSaverNode()
   this->declare_parameter<std::string>("map_path", "/home/pi/robot_ws/maps/map/arena_map");
 
   this->declare_parameter<bool>("save_on_start", false);
+  this->declare_parameter<bool>("shutdown_after_save", true);
 
   map_path_ = this->get_parameter("map_path").as_string();
 
   save_on_start_ = this->get_parameter("save_on_start").as_bool();
+  shutdown_after_save_ = this->get_parameter("shutdown_after_save").as_bool();
 
   save_map_client_ = this->create_client<slam_toolbox::srv::SaveMap>("/slam_toolbox/save_map");
 
@@ -81,4 +83,9 @@ void MapSaverNode::save_map()
   }
 
   RCLCPP_INFO(this->get_logger(), "Pose graph saved");
+
+  if (shutdown_after_save_) {
+    RCLCPP_INFO(this->get_logger(), "Map saver finished; shutting down");
+    rclcpp::shutdown();
+  }
 }

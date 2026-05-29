@@ -17,6 +17,7 @@ private:
 
   std::string map_path_;
   bool save_on_start_;
+  bool shutdown_after_save_;
 
   rclcpp::Client<slam_toolbox::srv::SaveMap>::SharedPtr save_map_client_;
   rclcpp::Client<slam_toolbox::srv::SerializePoseGraph>::SharedPtr serialize_client_;

@@ -3,3 +3,10 @@ frontier_explorer_node:
     map_topic: "/map"
     action_name: "navigate_to_pose"
     explore_period: 2.0
+    auto_finish_enabled: true
+
+    # Anzahl aufeinanderfolgender Explorer-Zyklen ohne Frontier,
+    # bevor Map Saver, Mapping-Stop und Navigation-Start ausgelöst werden.
+    no_frontier_finish_count: 5
+
+    finish_mapping_service: "/task_manager/finish_mapping"

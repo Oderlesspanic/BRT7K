@@ -69,6 +69,8 @@ ros2 service call /task_manager/restart_all std_srvs/srv/Trigger {}
 import os
 import signal
 import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -121,6 +123,7 @@ class TaskManagerNode(Node):
         self.create_service(Trigger, "~/start_all", self._start_all_service)
         self.create_service(Trigger, "~/stop_all", self._stop_all_service)
         self.create_service(Trigger, "~/restart_all", self._restart_all_service)
+        self.create_service(Trigger, "~/finish_mapping", self._finish_mapping_service)
 
         for name in self._managed:
             self.create_service(
@@ -242,6 +245,68 @@ class TaskManagerNode(Node):
         response.success = True
         response.message = "\n".join(stop_results + start_results)
         return response
+
+    def _finish_mapping_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        threading.Thread(target=self._finish_mapping_sequence, daemon=True).start()
+        response.success = True
+        response.message = "Mapping-Abschlusssequenz gestartet"
+        return response
+
+    def _finish_mapping_sequence(self) -> None:
+        self.get_logger().info("Mapping abgeschlossen: speichere Map")
+
+        if "map_saver" not in self._managed:
+            self.get_logger().error("Target 'map_saver' ist nicht im Taskmanager konfiguriert")
+            return
+
+        if "mapping" not in self._managed:
+            self.get_logger().error("Target 'mapping' ist nicht im Taskmanager konfiguriert")
+            return
+
+        if "navigation" not in self._managed:
+            self.get_logger().error("Target 'navigation' ist nicht im Taskmanager konfiguriert")
+            return
+
+        success, message = self._start_target("map_saver")
+        if not success:
+            self.get_logger().error(message)
+            return
+
+        self.get_logger().info(message)
+
+        map_saver = self._managed["map_saver"]
+        deadline = time.monotonic() + 60.0
+        while map_saver.is_running() and time.monotonic() < deadline:
+            time.sleep(0.5)
+
+        if map_saver.is_running():
+            self.get_logger().error("Map saver Timeout; Mapping wird nicht automatisch beendet")
+            return
+
+        return_code = map_saver.returncode()
+        if return_code not in (0, None):
+            self.get_logger().error(
+                f"Map saver fehlgeschlagen mit Returncode {return_code}; Mapping bleibt aktiv"
+            )
+            return
+
+        self.get_logger().info("Map gespeichert; stoppe Map Saver")
+        self._stop_target("map_saver")
+
+        self.get_logger().info("Stoppe Mapping/SLAM/Frontier/Nav2-SLAM")
+        self._stop_target("mapping")
+
+        self.get_logger().info("Starte Navigation mit gespeicherter Map")
+        nav_success, nav_message = self._start_target("navigation")
+        if nav_success:
+            self.get_logger().info(nav_message)
+        else:
+            self.get_logger().error(nav_message)
 
     def _handle_command(self, msg: String) -> None:
         command = msg.data.strip().lower()
