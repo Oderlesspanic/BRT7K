@@ -7,7 +7,9 @@ using namespace std::chrono_literals;
 FrontierExplorerNode::FrontierExplorerNode()
 : Node("frontier_explorer_node"),
   map_received_(false),
-  goal_active_(false)
+  goal_active_(false),
+  finish_requested_(false),
+  no_frontier_count_(0)
 {
     loadParameters();
 
@@ -26,6 +28,11 @@ FrontierExplorerNode::FrontierExplorerNode()
         rclcpp_action::create_client<NavigateToPose>(
             this,
             action_name_
+        );
+
+    finish_mapping_client_ =
+        this->create_client<std_srvs::srv::Trigger>(
+            finish_mapping_service_
         );
 
     timer_ =
@@ -57,6 +64,21 @@ void FrontierExplorerNode::loadParameters()
         2.0
     );
 
+    this->declare_parameter<bool>(
+        "auto_finish_enabled",
+        true
+    );
+
+    this->declare_parameter<int>(
+        "no_frontier_finish_count",
+        5
+    );
+
+    this->declare_parameter<std::string>(
+        "finish_mapping_service",
+        "/task_manager/finish_mapping"
+    );
+
     map_topic_ =
         this->get_parameter("map_topic").as_string();
 
@@ -65,6 +87,15 @@ void FrontierExplorerNode::loadParameters()
 
     explore_period_ =
         this->get_parameter("explore_period").as_double();
+
+    auto_finish_enabled_ =
+        this->get_parameter("auto_finish_enabled").as_bool();
+
+    no_frontier_finish_count_ =
+        this->get_parameter("no_frontier_finish_count").as_int();
+
+    finish_mapping_service_ =
+        this->get_parameter("finish_mapping_service").as_string();
 }
 
 void FrontierExplorerNode::mapCallback(
@@ -99,13 +130,28 @@ void FrontierExplorerNode::timerCallback()
 
     if (!frontier.has_value())
     {
+        no_frontier_count_++;
+
         RCLCPP_INFO(
             this->get_logger(),
-            "Keine Frontier mehr gefunden"
+            "Keine Frontier gefunden (%d/%d)",
+            no_frontier_count_,
+            no_frontier_finish_count_
         );
+
+        if (
+            auto_finish_enabled_ &&
+            !finish_requested_ &&
+            no_frontier_count_ >= no_frontier_finish_count_
+        )
+        {
+            requestMappingFinish();
+        }
 
         return;
     }
+
+    no_frontier_count_ = 0;
 
     auto goal =
         explorer_.mapToPose(
@@ -205,4 +251,30 @@ void FrontierExplorerNode::sendGoal(
         };
 
     nav_client_->async_send_goal(nav_goal, options);
+}
+
+void FrontierExplorerNode::requestMappingFinish()
+{
+    finish_requested_ = true;
+
+    if (!finish_mapping_client_->wait_for_service(2s))
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Taskmanager-Service %s nicht erreichbar; Mapping wird nicht automatisch abgeschlossen",
+            finish_mapping_service_.c_str()
+        );
+
+        finish_requested_ = false;
+        return;
+    }
+
+    auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Map scheint vollstaendig erkundet; starte Abschlusssequenz ueber Taskmanager"
+    );
+
+    finish_mapping_client_->async_send_request(request);
 }

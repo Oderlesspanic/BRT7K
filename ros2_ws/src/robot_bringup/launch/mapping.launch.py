@@ -7,12 +7,18 @@ import os
 
 def generate_launch_description():
     mapping_dir = get_package_share_directory("mapping")
+    navigation_dir = get_package_share_directory("navigation")
     mapping_launch = os.path.join(
         mapping_dir,
         "launch",
         "mapping.launch.py"
     )
 
+    navigation_slam_launch = os.path.join(
+        navigation_dir,
+        "launch",
+        "navigation_slam.launch.py"
+    )
 
     frontier_explorer_dir = get_package_share_directory("frontier_explorer")
     frontier_explorer_launch = os.path.join(
@@ -25,6 +31,10 @@ def generate_launch_description():
     return LaunchDescription([
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(mapping_launch)
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(navigation_slam_launch)
         ),
 
         IncludeLaunchDescription(
