@@ -1,0 +1,26 @@
+object_task_executor_node:
+  ros__parameters:
+    map_frame: "map"
+
+    objects_topic: "/objects"
+    corners_topic: "/corners"
+    command_topic: "/object_place_command"
+
+    # Diese Topics muessen zur ESP32-/micro-ROS-Firmware passen.
+    gripper_command_topic: "/gripper/command"
+    platform_command_topic: "/platform/command"
+    status_topic: "/object_task_executor/status"
+
+    gripper_close_command: "close"
+    gripper_open_command: "open"
+    platform_up_command: "up"
+    platform_down_command: "down"
+
+    # Offsets in map-Koordinaten, falls der Roboter nicht exakt auf Objekt/Ecke fahren darf.
+    pickup_offset_x: 0.0
+    pickup_offset_y: 0.0
+    dropoff_offset_x: 0.0
+    dropoff_offset_y: 0.0
+    goal_yaw: 0.0
+
+    actuator_settle_seconds: 1.0

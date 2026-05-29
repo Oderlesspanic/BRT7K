@@ -4,8 +4,8 @@
   <name>interfaces</name>
   <version>0.0.0</version>
   <description>Custom interfaces for BRT7K</description>
-  <maintainer email="root@todo.todo">root</maintainer>
-  <license>TODO</license>
+  <maintainer email="dachs.wild@hotmail.com">root</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

@@ -18,6 +18,7 @@
   <exec_depend>camera</exec_depend>
   <exec_depend>corner_manager</exec_depend>
   <exec_depend>object_manager</exec_depend>
+  <exec_depend>object_task_executor</exec_depend>
   <exec_depend>room_vision</exec_depend>
   <exec_depend>object_localizer</exec_depend>
   <exec_depend>edge_color</exec_depend>
@@ -32,7 +33,7 @@
   <exec_depend>mmc5603</exec_depend>
   <exec_depend>odometry</exec_depend>
   <exec_depend>sllidar_ros2</exec_depend>
-  <exec_depend>taskmanager</exec_depend>
+  <exec_depend>task_manager</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
