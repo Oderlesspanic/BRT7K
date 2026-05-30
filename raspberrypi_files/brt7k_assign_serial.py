@@ -21,6 +21,12 @@ BAUD_RATES = {
 ROLE_LINKS = {
     "drive": "/dev/esp_drive",
     "gripper": "/dev/esp_gripper",
+    "lidar": "/dev/lidar",
+}
+
+
+USB_ID_ROLES = {
+    ("10c4", "ea60"): "lidar",
 }
 
 
@@ -79,6 +85,27 @@ def parse_role(text: str) -> str | None:
     return None
 
 
+def usb_id_role(device: str) -> str | None:
+    tty_name = Path(device).name
+    sys_path = Path("/sys/class/tty") / tty_name / "device"
+
+    for path in [sys_path, *sys_path.parents]:
+        vendor_file = path / "idVendor"
+        product_file = path / "idProduct"
+        if not vendor_file.exists() or not product_file.exists():
+            continue
+
+        try:
+            vendor = vendor_file.read_text(encoding="utf-8").strip().lower()
+            product = product_file.read_text(encoding="utf-8").strip().lower()
+        except OSError:
+            continue
+
+        return USB_ID_ROLES.get((vendor, product))
+
+    return None
+
+
 def replace_symlink(link: str, target: str, dry_run: bool) -> None:
     link_path = Path(link)
     if dry_run:
@@ -109,6 +136,12 @@ def main() -> int:
     found: dict[str, str] = {}
 
     for device in sorted(args.devices):
+        id_role = usb_id_role(device)
+        if id_role is not None:
+            found[id_role] = device
+            replace_symlink(ROLE_LINKS[id_role], device, args.dry_run)
+            continue
+
         try:
             banner = read_banner(device, args.baud, args.timeout)
         except OSError as exc:
