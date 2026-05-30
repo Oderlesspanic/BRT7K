@@ -83,8 +83,20 @@ apt-get install -y \
   sudo
 
 add-apt-repository universe -y
+add-apt-repository "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release && echo "${UBUNTU_CODENAME}")-updates main universe restricted multiverse" -y
+add-apt-repository "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release && echo "${UBUNTU_CODENAME}")-backports main universe restricted multiverse" -y
+add-apt-repository "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release && echo "${UBUNTU_CODENAME}")-security main universe restricted multiverse" -y
 
-if [[ ! -f /etc/apt/sources.list.d/ros2.list ]]; then
+ROS2_DEB822_SOURCE=""
+if [[ -d /etc/apt/sources.list.d ]]; then
+  ROS2_DEB822_SOURCE="$(
+    grep -Rls "packages.ros.org/ros2/ubuntu" /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+  )"
+fi
+
+if [[ -n "${ROS2_DEB822_SOURCE}" ]]; then
+  rm -f /etc/apt/sources.list.d/ros2.list
+elif ! grep -Rqs "packages.ros.org/ros2/ubuntu" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
   install -d -m 0755 /etc/apt/keyrings
   curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     -o /etc/apt/keyrings/ros-archive-keyring.gpg
@@ -93,6 +105,8 @@ if [[ ! -f /etc/apt/sources.list.d/ros2.list ]]; then
 fi
 
 apt-get update
+apt-get install -f -y
+apt-get full-upgrade -y
 apt-get install -y \
   build-essential \
   cmake \
@@ -111,6 +125,7 @@ apt-get install -y \
   udev \
   libcamera-dev \
   libgmock-dev \
+  nlohmann-json3-dev \
   python3-colcon-common-extensions \
   python3-opencv \
   python3-numpy \
@@ -206,14 +221,17 @@ if [[ "${BUILD_WORKSPACE}" -eq 1 ]]; then
   echo "==> Installing ROS dependencies from workspace"
   run_as_user "cd '${ROS_WS}' && source /opt/ros/${ROS_DISTRO}/setup.bash && rosdep install --from-paths src --ignore-src -r -y"
 
+  echo "==> Removing stale generated interface artifacts"
+  run_as_user "rm -rf '${ROS_WS}/build/interfaces' '${ROS_WS}/install/interfaces'"
+
   echo "==> Building workspace"
-  run_as_user "cd '${ROS_WS}' && source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --symlink-install --log-base /tmp/brt7k-colcon-log"
+  run_as_user "cd '${ROS_WS}' && source /opt/ros/${ROS_DISTRO}/setup.bash && colcon --log-base /tmp/brt7k-colcon-log build"
 fi
 
 echo "==> Installing robot autostart launcher"
 cat > /usr/local/bin/brt7k_robot_autostart.sh <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 source /opt/ros/${ROS_DISTRO}/setup.bash
 source "${ROS_WS}/install/setup.bash"

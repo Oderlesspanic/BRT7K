@@ -14,4 +14,7 @@ services:
       - ./firmware:/firmware
     environment:
       - ROS_DOMAIN_ID=0
+    ports:
+      - "8080:8080"
+      - "9090:9090"
     command: bash
