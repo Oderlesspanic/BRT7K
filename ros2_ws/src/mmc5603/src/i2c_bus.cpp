@@ -39,6 +39,10 @@ bool I2CBus::write_byte(uint8_t reg, uint8_t value) {
     return write(fd_, buf, 2) == 2;
 }
 
+bool I2CBus::read_byte(uint8_t reg, uint8_t& value) {
+    return read_bytes(reg, &value, 1);
+}
+
 bool I2CBus::read_bytes(uint8_t reg, uint8_t* buffer, size_t length) {
     if (write(fd_, &reg, 1) != 1) return false;
     return read(fd_, buffer, length) == (int)length;
