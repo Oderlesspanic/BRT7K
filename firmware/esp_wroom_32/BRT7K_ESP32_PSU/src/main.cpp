@@ -15,6 +15,11 @@
 #include <geometry_msgs/msg/twist.h>
 
 // ─────────────────────────────────────────────
+//  Board role announcement (for auto-detecting which board is which in multi-board setups)
+// ─────────────────────────────────────────────
+#define BRT7K_ROLE "drive"
+
+// ─────────────────────────────────────────────
 //  INA226 (I2C on D32/D33, raw — no external lib)
 //  Shunt: 10 mOhm, Current-LSB: 0.5 mA
 //  CAL = 0.00512 / (0.0005 A x 0.01 Ohm) = 1024
@@ -216,7 +221,7 @@ void announceBoardRole() {
   Serial.begin(115200);
 
   for (int i = 0; i < 20; i++) {
-    Serial.println("BRT7K_ROLE=drive");
+    Serial.println("BRT7K_ROLE");
     delay(250);
   }
 }
