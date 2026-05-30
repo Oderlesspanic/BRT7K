@@ -2,7 +2,7 @@ mmc5603_node:
   ros__parameters:
     i2c_bus: "/dev/i2c-1"
     device_address: 48
-    frame_id: "mag_link"
+    frame_id: "magnetometer_link"
     publish_rate: 50.0
 
     offset_x: 0.0
