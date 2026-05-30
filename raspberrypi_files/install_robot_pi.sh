@@ -229,6 +229,9 @@ if [[ "${BUILD_WORKSPACE}" -eq 1 ]]; then
 fi
 
 echo "==> Installing robot autostart launcher"
+install -m 0755 "${REPO_ROOT}/raspberrypi_files/brt7k_assign_serial.py" \
+  /usr/local/bin/brt7k_assign_serial.py
+
 cat > /usr/local/bin/brt7k_robot_autostart.sh <<EOF
 #!/usr/bin/env bash
 set -eo pipefail
@@ -270,11 +273,28 @@ EOF
 chmod 0755 /usr/local/bin/brt7k_robot_autostart.sh
 
 echo "==> Installing systemd service"
+cat > /etc/systemd/system/brt7k-assign-serial.service <<EOF
+[Unit]
+Description=BRT7K ESP32 serial role assignment
+After=systemd-udev-settle.service
+Before=brt7k-robot.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/udevadm settle --timeout=10
+ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive,gripper,lidar
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat > /etc/systemd/system/brt7k-robot.service <<EOF
 [Unit]
 Description=BRT7K robot autostart
 Wants=network-online.target
-After=network-online.target
+Wants=brt7k-assign-serial.service
+After=network-online.target brt7k-assign-serial.service
 
 [Service]
 Type=simple
@@ -294,13 +314,17 @@ EOF
 
 systemctl daemon-reload
 if [[ "${ENABLE_SERVICE}" -eq 1 ]]; then
+  systemctl enable brt7k-assign-serial.service
   systemctl enable brt7k-robot.service
 fi
 
 echo
 echo "Done."
+echo "Serial assignment: brt7k-assign-serial.service"
 echo "Autostart service: brt7k-robot.service"
+echo "Assign now:        sudo systemctl start brt7k-assign-serial.service"
 echo "Start now:        sudo systemctl start brt7k-robot.service"
+echo "Show serial logs:  journalctl -u brt7k-assign-serial.service -n 80 --no-pager"
 echo "Show logs:        journalctl -u brt7k-robot.service -f"
 echo "Mapping remains disabled on boot and can be started through the web GUI/task_manager."
 echo
