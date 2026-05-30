@@ -7,6 +7,7 @@ import argparse
 import glob
 import os
 import select
+import subprocess
 import sys
 import termios
 import time
@@ -87,7 +88,7 @@ def parse_role(text: str) -> str | None:
 
 def usb_id_role(device: str) -> str | None:
     tty_name = Path(device).name
-    sys_path = Path("/sys/class/tty") / tty_name / "device"
+    sys_path = (Path("/sys/class/tty") / tty_name / "device").resolve()
 
     for path in [sys_path, *sys_path.parents]:
         vendor_file = path / "idVendor"
@@ -103,7 +104,29 @@ def usb_id_role(device: str) -> str | None:
 
         return USB_ID_ROLES.get((vendor, product))
 
-    return None
+    try:
+        result = subprocess.run(
+            ["udevadm", "info", "-q", "property", "-n", device],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+
+    properties: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        properties[key] = value.strip().lower()
+
+    return USB_ID_ROLES.get(
+        (
+            properties.get("ID_VENDOR_ID", ""),
+            properties.get("ID_MODEL_ID", ""),
+        )
+    )
 
 
 def replace_symlink(link: str, target: str, dry_run: bool) -> None:
