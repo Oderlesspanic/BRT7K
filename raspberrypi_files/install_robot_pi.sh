@@ -83,6 +83,9 @@ apt-get install -y \
   sudo
 
 add-apt-repository universe -y
+add-apt-repository "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release && echo "${UBUNTU_CODENAME}")-updates main universe restricted multiverse" -y
+add-apt-repository "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release && echo "${UBUNTU_CODENAME}")-backports main universe restricted multiverse" -y
+add-apt-repository "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release && echo "${UBUNTU_CODENAME}")-security main universe restricted multiverse" -y
 
 ROS2_DEB822_SOURCE=""
 if [[ -d /etc/apt/sources.list.d ]]; then
@@ -102,6 +105,8 @@ elif ! grep -Rqs "packages.ros.org/ros2/ubuntu" /etc/apt/sources.list /etc/apt/s
 fi
 
 apt-get update
+apt-get install -f -y
+apt-get full-upgrade -y
 apt-get install -y \
   build-essential \
   cmake \
@@ -220,7 +225,7 @@ if [[ "${BUILD_WORKSPACE}" -eq 1 ]]; then
   run_as_user "rm -rf '${ROS_WS}/build/interfaces' '${ROS_WS}/install/interfaces'"
 
   echo "==> Building workspace"
-  run_as_user "cd '${ROS_WS}' && source /opt/ros/${ROS_DISTRO}/setup.bash && colcon --log-base /tmp/brt7k-colcon-log build --symlink-install"
+  run_as_user "cd '${ROS_WS}' && source /opt/ros/${ROS_DISTRO}/setup.bash && colcon --log-base /tmp/brt7k-colcon-log build"
 fi
 
 echo "==> Installing robot autostart launcher"
