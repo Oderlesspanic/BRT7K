@@ -371,6 +371,15 @@ void gripper_cmd_callback(const void* msgin) {
 
 // ═══════════════════════ micro-ROS Lifecycle ════════════════════
 
+void announceBoardRole() {
+  Serial.begin(115200);
+
+  for (int i = 0; i < 20; i++) {
+    Serial.println("BRT7K_ROLE=gripper");
+    delay(250);
+  }
+}
+
 void createEntities() {
   allocator = rcl_get_default_allocator();
   rclc_support_init(&support, 0, NULL, &allocator);
@@ -431,6 +440,8 @@ void destroyEntities() {
 // ═══════════════════════ Setup ══════════════════════════════════
 
 void setup() {
+  announceBoardRole();
+
   // micro-ROS serial transport (UART0 / USB)
   set_microros_transports();
   delay(2000);
