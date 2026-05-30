@@ -23,6 +23,18 @@ docker compose build
 ```bash
 docker compose run --rm ros2-dev
 ```
+To access the web GUI from the host browser, publish the service ports:
+
+```bash
+docker compose run --rm --service-ports ros2-dev
+```
+
+Then open:
+
+```text
+http://localhost:8080
+```
+
 and 
 
 ```bash
