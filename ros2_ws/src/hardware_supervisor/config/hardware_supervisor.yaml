@@ -7,7 +7,6 @@ hardware_supervisor:
     device_names:
       - esp32_drive
       - esp32_gripper
-      - esp32_monitor
       - lidar
       - camera_csi
       - imu
@@ -27,14 +26,6 @@ hardware_supervisor:
         communication_type: "esp32_heartbeat"
         path: "/dev/esp_gripper"
         topic: "/esp32_gripper/heartbeat"
-        topic_type: "std_msgs/msg/Empty"
-        timeout: 2.0
-
-      esp32_monitor:
-        physical_type: "usb"
-        communication_type: "esp32_heartbeat"
-        path: "/dev/esp_monitor"
-        topic: "/esp32_monitor/heartbeat"
         topic_type: "std_msgs/msg/Empty"
         timeout: 2.0
 

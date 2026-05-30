@@ -93,7 +93,6 @@ batteryTopic.subscribe((msg) => {
 //   "camera": "green",
 //   "esp_drive": "green",
 //   "esp_gripper": "yellow",
-//   "esp_monitor": "green",
 //   "imu": "green",
 //   "magnetometer": "red"
 // }
@@ -113,7 +112,6 @@ systemStatusTopic.subscribe((msg) => {
     setLamp("camera", status.camera);
     setLamp("esp_drive", status.esp_drive);
     setLamp("esp_gripper", status.esp_gripper);
-    setLamp("esp_monitor", status.esp_monitor);
     setLamp("imu", status.imu);
     setLamp("magnetometer", status.magnetometer);
 

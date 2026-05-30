@@ -10,6 +10,7 @@
 #include <rcl/error_handling.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
+#include <std_msgs/msg/empty.h>
 #include <std_msgs/msg/int32.h>
 
 // --- Pin definitions ---
@@ -32,9 +33,11 @@ Adafruit_NeoPixel ring2(NUM_LEDS, NEO_PIN_2, NEO_GRB + NEO_KHZ800);
 rcl_publisher_t pub_lift;
 rcl_publisher_t pub_left;
 rcl_publisher_t pub_right;
+rcl_publisher_t pub_heartbeat;
 rcl_subscription_t sub_left_ring;
 rcl_subscription_t sub_right_ring;
 
+std_msgs__msg__Empty msg_heartbeat;
 std_msgs__msg__Int32 msg_lift;
 std_msgs__msg__Int32 msg_left;
 std_msgs__msg__Int32 msg_right;
@@ -90,6 +93,15 @@ void errorLoop() {
   }
 }
 
+void announceBoardRole() {
+  Serial.begin(115200);
+
+  for (int i = 0; i < 20; i++) {
+    Serial.println("BRT7K_ROLE=drive");
+    delay(250);
+  }
+}
+
 // --------------------------------------------------------
 // ROS 2 Callbacks
 // --------------------------------------------------------
@@ -119,6 +131,7 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
     
     // Toggle Blue LED to show ROS activity
     digitalWrite(LED_BLUE, !digitalRead(LED_BLUE)); 
+    rcl_publish(&pub_heartbeat, &msg_heartbeat, NULL);
 
     tcaSelect(7);
     if (LiftingScale.available()) {
@@ -144,6 +157,8 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
 // Setup
 // --------------------------------------------------------
 void setup() {
+  announceBoardRole();
+
   // 1. Configure default Serial for micro-ROS
   set_microros_transports(); 
 
@@ -186,9 +201,10 @@ void setup() {
 
   // Create init_options and node
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
-  RCCHECK(rclc_node_init_default(&node, "gripper_node", "", &support));
+  RCCHECK(rclc_node_init_default(&node, "drive", "", &support));
 
   // Create 3 Publishers
+  RCCHECK(rclc_publisher_init_default(&pub_heartbeat, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Empty), "/esp32_drive/heartbeat"));
   RCCHECK(rclc_publisher_init_default(&pub_lift, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "gripper/lift_weight"));
   RCCHECK(rclc_publisher_init_default(&pub_left, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "gripper/left_weight"));
   RCCHECK(rclc_publisher_init_default(&pub_right, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "gripper/right_weight"));

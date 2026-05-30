@@ -1,3 +1,0 @@
-CompileFlags:
-  CompilationDatabase: /Users/jan/git/BRT7K/firmware/esp_wroom_32/monitor/build
-  Remove: [-m*, -f*]

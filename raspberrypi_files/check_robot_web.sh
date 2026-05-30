@@ -17,6 +17,16 @@ run() {
   "$@" || true
 }
 
+source_if_exists() {
+  local setup_file="$1"
+  if [[ -f "${setup_file}" ]]; then
+    set +u
+    # shellcheck disable=SC1090
+    source "${setup_file}"
+    set -u
+  fi
+}
+
 section "Host"
 run hostname -I
 run ip -br addr
@@ -31,16 +41,12 @@ section "Local web checks"
 run curl -I --max-time 3 "http://127.0.0.1:${HTTP_PORT}/"
 run curl --max-time 3 "http://127.0.0.1:${HTTP_PORT}/"
 
-section "ROS environment"
-if [[ -f /opt/ros/jazzy/setup.bash ]]; then
-  # shellcheck disable=SC1091
-  source /opt/ros/jazzy/setup.bash
-fi
+section "Firewall"
+run sudo ufw status verbose
 
-if [[ -f "${ROS_WS}/install/setup.bash" ]]; then
-  # shellcheck disable=SC1091
-  source "${ROS_WS}/install/setup.bash"
-fi
+section "ROS environment"
+source_if_exists /opt/ros/jazzy/setup.bash
+source_if_exists "${ROS_WS}/install/setup.bash"
 
 run ros2 service list
 run ros2 service call /task_manager/status std_srvs/srv/Trigger "{}"

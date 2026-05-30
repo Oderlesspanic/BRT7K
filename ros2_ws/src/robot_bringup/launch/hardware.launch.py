@@ -57,14 +57,4 @@ def generate_launch_description():
             ],
             output="screen"
         ),
-
-        ExecuteProcess(
-            cmd=[
-                "ros2", "run", "micro_ros_agent", "micro_ros_agent",
-                "serial",
-                "--dev", "/dev/esp_monitor",
-                "-b", "115200"
-            ],
-            output="screen"
-        ),
     ])
