@@ -70,21 +70,21 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-#if(BUILD_TESTING)
-#
-#  ament_add_gtest(test_imu_converter
-#    test/test_imu_converter.cpp
-#  )
-#  if(TARGET test_imu_converter)
-#    target_link_libraries(test_imu_converter
-#      ${PROJECT_NAME}_lib
-#    )
-#    ament_target_dependencies(test_imu_converter
-#      rclcpp
-#      sensor_msgs
-#    )
-#  endif()
-#
+if(BUILD_TESTING)
+
+  ament_add_gtest(test_imu_converter
+    test/test_imu_converter.cpp
+  )
+  if(TARGET test_imu_converter)
+    target_link_libraries(test_imu_converter
+      ${PROJECT_NAME}_lib
+    )
+    ament_target_dependencies(test_imu_converter
+      rclcpp
+      sensor_msgs
+    )
+  endif()
+
 #  ament_add_gmock(test_mpu6050_driver
 #    test/test_mpu6050_driver.cpp
 #  )
@@ -111,7 +111,7 @@ install(
 #    )
 #  endif()
 #
-#endif()
+endif()
 
 ament_export_include_directories(include)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)

@@ -11,11 +11,12 @@ MagneticFieldData MMC5603Convert::raw_to_tesla(
 {
     MagneticFieldData out{};
 
-    constexpr double RAW_TO_UTESLA = 3000.0 / 524288.0;
+    constexpr double RAW_ZERO = 524288.0;
+    constexpr double RAW_TO_UTESLA = 3000.0 / RAW_ZERO;
 
-    double x_ut = (static_cast<double>(raw.x) - offset_x) * RAW_TO_UTESLA * scale_x;
-    double y_ut = (static_cast<double>(raw.y) - offset_y) * RAW_TO_UTESLA * scale_y;
-    double z_ut = (static_cast<double>(raw.z) - offset_z) * RAW_TO_UTESLA * scale_z;
+    double x_ut = (static_cast<double>(raw.x) - RAW_ZERO - offset_x) * RAW_TO_UTESLA * scale_x;
+    double y_ut = (static_cast<double>(raw.y) - RAW_ZERO - offset_y) * RAW_TO_UTESLA * scale_y;
+    double z_ut = (static_cast<double>(raw.z) - RAW_ZERO - offset_z) * RAW_TO_UTESLA * scale_z;
 
     out.x_tesla = x_ut * 1e-6;
     out.y_tesla = y_ut * 1e-6;

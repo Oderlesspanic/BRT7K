@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <chrono>
 #include "mmc5603/i2c_bus.hpp"
 
 struct MMC5603RawData {
@@ -17,10 +18,11 @@ public:
 
     bool initialize();
     bool trigger_measurement();
+    bool wait_for_measurement(std::chrono::milliseconds timeout);
     bool read_raw_data(MMC5603RawData& data);
 
 private:
     std::shared_ptr<I2CBus> bus_;
 
-    int32_t combine_20bit(uint8_t msb, uint8_t lsb, uint8_t low_nibble);
+    int32_t combine_20bit(uint8_t msb, uint8_t mid, uint8_t low_nibble);
 };
