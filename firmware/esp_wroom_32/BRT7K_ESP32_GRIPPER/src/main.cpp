@@ -45,6 +45,11 @@
  *   HOLDING → LOWERING → CLOSING → ...     (command.position < max)
  */
 
+// ─────────────────────────────────────────────
+//  Board role announcement (for auto-detecting which board is which in multi-board setups)
+// ─────────────────────────────────────────────
+#define BRT7K_ROLE "gripper"
+
 // ═══════════════════════ Pin Definitions ════════════════════════
 
 #define GRIP_L_PWM   25
@@ -375,7 +380,7 @@ void announceBoardRole() {
   Serial.begin(115200);
 
   for (int i = 0; i < 20; i++) {
-    Serial.println("BRT7K_ROLE=gripper");
+    Serial.println("BRT7K_ROLE");
     delay(250);
   }
 }
