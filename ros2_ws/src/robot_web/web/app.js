@@ -65,6 +65,79 @@ mapTopic.subscribe((msg) => {
 });
 
 // ----------------------------------------------------
+// ROS Logs: /rosout rcl_interfaces/Log
+// Shows WARN, ERROR and FATAL below the map.
+// ----------------------------------------------------
+
+const ROS_LOG_LEVELS = {
+  10: "DEBUG",
+  20: "INFO",
+  30: "WARN",
+  40: "ERROR",
+  50: "FATAL"
+};
+const MAX_LOG_ENTRIES = 120;
+
+const rosLogConsole = document.getElementById("rosLogConsole");
+const btnClearLogs = document.getElementById("btnClearLogs");
+
+const rosoutTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/rosout",
+  messageType: "rcl_interfaces/Log"
+});
+
+rosoutTopic.subscribe((msg) => {
+  if (msg.level < 30) return;
+  appendRosLog(msg);
+});
+
+btnClearLogs.addEventListener("click", () => {
+  rosLogConsole.replaceChildren();
+});
+
+function appendRosLog(msg) {
+  const level = ROS_LOG_LEVELS[msg.level] || String(msg.level);
+  const entry = document.createElement("div");
+  entry.className = `log-entry ${level.toLowerCase()}`;
+
+  const time = document.createElement("span");
+  time.className = "log-time";
+  time.textContent = formatRosStamp(msg.stamp);
+
+  const levelNode = document.createElement("span");
+  levelNode.className = "log-level";
+  levelNode.textContent = level;
+
+  const node = document.createElement("span");
+  node.className = "log-node";
+  node.title = msg.name || "";
+  node.textContent = msg.name || "-";
+
+  const message = document.createElement("span");
+  message.className = "log-message";
+  message.textContent = msg.msg || "";
+
+  entry.append(time, levelNode, node, message);
+  rosLogConsole.appendChild(entry);
+
+  while (rosLogConsole.children.length > MAX_LOG_ENTRIES) {
+    rosLogConsole.firstElementChild.remove();
+  }
+
+  rosLogConsole.scrollTop = rosLogConsole.scrollHeight;
+}
+
+function formatRosStamp(stamp) {
+  if (!stamp || typeof stamp.sec !== "number") {
+    return new Date().toLocaleTimeString();
+  }
+
+  const ms = stamp.sec * 1000 + Math.floor((stamp.nanosec || 0) / 1000000);
+  return new Date(ms).toLocaleTimeString();
+}
+
+// ----------------------------------------------------
 // Battery: /battery_state sensor_msgs/BatteryState
 // voltage -> V
 // current -> A

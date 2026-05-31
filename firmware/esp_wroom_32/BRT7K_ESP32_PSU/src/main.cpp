@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
 #include <INA226.h>
+#include <string.h>
 
 // --- micro-ROS ---
 #include <micro_ros_arduino.h>
@@ -14,6 +15,9 @@
 #include <std_msgs/msg/float32.h>
 #include <sensor_msgs/msg/battery_state.h>
 #include <geometry_msgs/msg/twist.h>
+#include <nav_msgs/msg/odometry.h>
+#include <rosidl_runtime_c/string_functions.h>
+#include <rmw_microros/time_sync.h>
 
 // ─────────────────────────────────────────────
 //  Board role announcement (for auto-detecting which board is which in multi-board setups)
@@ -61,6 +65,8 @@
 // ─────────────────────────────────────────────
 #define WHEEL_RADIUS_M   0.05f   // m
 #define WHEEL_BASE_M     0.30f   // m  (distance between wheels)
+#define ENCODER_STEPS_PER_REV 32768.0f
+#define ODOM_PUBLISH_MS 100
 
 // ─────────────────────────────────────────────
 //  Status LEDs / NeoPixels
@@ -90,21 +96,32 @@ static uint32_t s_last_ms     = 0;
 static float    s_tof_cm      = TOF_OUT_OF_RANGE;
 static bool     s_ina226_ok   = false;
 
+static bool     s_odom_ready       = false;
+static float    s_last_left_rad    = 0.0f;
+static float    s_last_right_rad   = 0.0f;
+static uint32_t s_last_odom_ms     = 0;
+static float    s_odom_x_m         = 0.0f;
+static float    s_odom_y_m         = 0.0f;
+static float    s_odom_yaw_rad     = 0.0f;
+
 // ─────────────────────────────────────────────
 //  ROS 2 objects
 // ─────────────────────────────────────────────
 rcl_publisher_t    pub_battery;
 rcl_publisher_t    pub_heartbeat;
 rcl_publisher_t    pub_tof;
+rcl_publisher_t    pub_wheel_odom;
 rcl_subscription_t sub_left_ring;
 rcl_subscription_t sub_right_ring;
 rcl_subscription_t sub_cmd_vel;
 rcl_timer_t        timer_1hz;
 rcl_timer_t        timer_10hz;
+rcl_timer_t        timer_odom;
 
 sensor_msgs__msg__BatteryState  msg_battery;
 std_msgs__msg__Empty            msg_heartbeat;
 std_msgs__msg__Float32          msg_tof;
+nav_msgs__msg__Odometry         msg_wheel_odom;
 std_msgs__msg__Int32            msg_sub_left;
 std_msgs__msg__Int32            msg_sub_right;
 geometry_msgs__msg__Twist       msg_cmd_vel;
@@ -146,6 +163,35 @@ static void sendFrame(Stream &port, uint8_t frame[10]) {
   port.flush();
 }
 
+static bool readFrame(Stream &port, uint8_t expected_id, uint8_t expected_cmd, uint8_t frame[10], uint32_t timeout_ms) {
+  uint8_t window[10] = {0};
+  size_t count = 0;
+  uint32_t start = millis();
+
+  while ((millis() - start) < timeout_ms) {
+    while (port.available()) {
+      uint8_t b = (uint8_t)port.read();
+      if (count < 10) {
+        window[count++] = b;
+      } else {
+        memmove(window, window + 1, 9);
+        window[9] = b;
+      }
+
+      if (count == 10 &&
+          window[0] == expected_id &&
+          window[1] == expected_cmd &&
+          crc8_dallas(window, 9) == window[9]) {
+        memcpy(frame, window, 10);
+        return true;
+      }
+    }
+    delay(1);
+  }
+
+  return false;
+}
+
 static void motorSwitchToSpeedLoop(Stream &port, uint8_t id) {
   uint8_t f[10] = { id, 0xA0, 0x02, 0x00, 0,0,0,0,0, 0 };
   sendFrame(port, f);
@@ -156,6 +202,66 @@ static void motorSetSpeedRPM(Stream &port, uint8_t id, float rpm) {
   int16_t v  = (int16_t)lroundf(rpm * 10.0f);
   uint8_t f[10] = { id, 0x64, (uint8_t)(v >> 8), (uint8_t)(v & 0xFF), 0,0,0,0,0, 0 };
   sendFrame(port, f);
+}
+
+static bool motorReadMileage(Stream &port, uint8_t id, int32_t &laps, uint16_t &position) {
+  drainRx(port);
+  uint8_t f[10] = { id, 0x74, 0,0,0,0,0,0,0, 0 };
+  sendFrame(port, f);
+
+  uint8_t r[10];
+  if (!readFrame(port, id, 0x74, r, 25)) return false;
+
+  uint32_t raw_laps =
+    ((uint32_t)r[2] << 24) |
+    ((uint32_t)r[3] << 16) |
+    ((uint32_t)r[4] << 8)  |
+    ((uint32_t)r[5]);
+  laps = (int32_t)raw_laps;
+  position = ((uint16_t)r[6] << 8) | (uint16_t)r[7];
+
+  return position < (uint16_t)ENCODER_STEPS_PER_REV;
+}
+
+static float normalizeAngle(float angle) {
+  while (angle > 3.14159265f) angle -= 2.0f * 3.14159265f;
+  while (angle < -3.14159265f) angle += 2.0f * 3.14159265f;
+  return angle;
+}
+
+static void stampNow(nav_msgs__msg__Odometry & msg) {
+  int64_t now_ns = rmw_uros_epoch_nanos();
+  if (now_ns <= 0) {
+    now_ns = (int64_t)millis() * 1000000LL;
+  }
+
+  msg.header.stamp.sec = (int32_t)(now_ns / 1000000000LL);
+  msg.header.stamp.nanosec = (uint32_t)(now_ns % 1000000000LL);
+}
+
+static void initWheelOdomMessage() {
+  nav_msgs__msg__Odometry__init(&msg_wheel_odom);
+  rosidl_runtime_c__String__assign(&msg_wheel_odom.header.frame_id, "odom");
+  rosidl_runtime_c__String__assign(&msg_wheel_odom.child_frame_id, "base_link");
+
+  for (size_t i = 0; i < 36; i++) {
+    msg_wheel_odom.pose.covariance[i] = 0.0;
+    msg_wheel_odom.twist.covariance[i] = 0.0;
+  }
+
+  msg_wheel_odom.pose.covariance[0] = 0.02;
+  msg_wheel_odom.pose.covariance[7] = 0.02;
+  msg_wheel_odom.pose.covariance[14] = 1e6;
+  msg_wheel_odom.pose.covariance[21] = 1e6;
+  msg_wheel_odom.pose.covariance[28] = 1e6;
+  msg_wheel_odom.pose.covariance[35] = 0.05;
+
+  msg_wheel_odom.twist.covariance[0] = 0.02;
+  msg_wheel_odom.twist.covariance[7] = 1e6;
+  msg_wheel_odom.twist.covariance[14] = 1e6;
+  msg_wheel_odom.twist.covariance[21] = 1e6;
+  msg_wheel_odom.twist.covariance[28] = 1e6;
+  msg_wheel_odom.twist.covariance[35] = 0.05;
 }
 
 // ─────────────────────────────────────────────
@@ -264,6 +370,75 @@ void timer_10hz_cb(rcl_timer_t * t, int64_t last_call_time) {
   RCSOFTCHECK(rcl_publish(&pub_tof, &msg_tof, NULL));
 }
 
+// 10 Hz — wheel odometry from motor encoder mileage
+void timer_odom_cb(rcl_timer_t * t, int64_t last_call_time) {
+  RCLC_UNUSED(last_call_time);
+  if (t == NULL) return;
+
+  int32_t left_laps = 0;
+  int32_t right_laps = 0;
+  uint16_t left_position = 0;
+  uint16_t right_position = 0;
+
+  if (!motorReadMileage(Serial1, LEFT_ID, left_laps, left_position)) return;
+  if (!motorReadMileage(Serial2, RIGHT_ID, right_laps, right_position)) return;
+
+  const float left_revolutions =
+    (float)left_laps + ((float)left_position / ENCODER_STEPS_PER_REV);
+  const float right_revolutions =
+    (float)right_laps + ((float)right_position / ENCODER_STEPS_PER_REV);
+
+  const float left_rad = left_revolutions * 2.0f * 3.14159265f;
+  const float right_rad = -right_revolutions * 2.0f * 3.14159265f;  // right motor is mounted mirrored
+  const uint32_t now_ms = millis();
+
+  if (!s_odom_ready) {
+    s_odom_ready = true;
+    s_last_left_rad = left_rad;
+    s_last_right_rad = right_rad;
+    s_last_odom_ms = now_ms;
+  }
+
+  const uint32_t dt_ms = now_ms - s_last_odom_ms;
+  if (dt_ms == 0) return;
+
+  const float dt_s = dt_ms / 1000.0f;
+  const float delta_left_m = (left_rad - s_last_left_rad) * WHEEL_RADIUS_M;
+  const float delta_right_m = (right_rad - s_last_right_rad) * WHEEL_RADIUS_M;
+  const float delta_center_m = 0.5f * (delta_left_m + delta_right_m);
+  const float delta_yaw_rad = (delta_right_m - delta_left_m) / WHEEL_BASE_M;
+  const float mid_yaw_rad = s_odom_yaw_rad + 0.5f * delta_yaw_rad;
+
+  s_odom_x_m += delta_center_m * cosf(mid_yaw_rad);
+  s_odom_y_m += delta_center_m * sinf(mid_yaw_rad);
+  s_odom_yaw_rad = normalizeAngle(s_odom_yaw_rad + delta_yaw_rad);
+
+  s_last_left_rad = left_rad;
+  s_last_right_rad = right_rad;
+  s_last_odom_ms = now_ms;
+
+  const float linear_velocity_mps = delta_center_m / dt_s;
+  const float angular_velocity_radps = delta_yaw_rad / dt_s;
+  const float half_yaw = 0.5f * s_odom_yaw_rad;
+
+  stampNow(msg_wheel_odom);
+  msg_wheel_odom.pose.pose.position.x = s_odom_x_m;
+  msg_wheel_odom.pose.pose.position.y = s_odom_y_m;
+  msg_wheel_odom.pose.pose.position.z = 0.0;
+  msg_wheel_odom.pose.pose.orientation.x = 0.0;
+  msg_wheel_odom.pose.pose.orientation.y = 0.0;
+  msg_wheel_odom.pose.pose.orientation.z = sinf(half_yaw);
+  msg_wheel_odom.pose.pose.orientation.w = cosf(half_yaw);
+  msg_wheel_odom.twist.twist.linear.x = linear_velocity_mps;
+  msg_wheel_odom.twist.twist.linear.y = 0.0;
+  msg_wheel_odom.twist.twist.linear.z = 0.0;
+  msg_wheel_odom.twist.twist.angular.x = 0.0;
+  msg_wheel_odom.twist.twist.angular.y = 0.0;
+  msg_wheel_odom.twist.twist.angular.z = angular_velocity_radps;
+
+  RCSOFTCHECK(rcl_publish(&pub_wheel_odom, &msg_wheel_odom, NULL));
+}
+
 // ─────────────────────────────────────────────
 //  Setup
 // ─────────────────────────────────────────────
@@ -329,10 +504,12 @@ void setup() {
   msg_battery.power_supply_health     = 0;
   msg_battery.power_supply_technology = 0;
   msg_battery.present                 = true;
+  initWheelOdomMessage();
 
   // micro-ROS node
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  rmw_uros_sync_session(1000);
   RCCHECK(rclc_node_init_default(&node, "esp32_drive", "", &support));
 
   // Publishers
@@ -345,6 +522,9 @@ void setup() {
   RCCHECK(rclc_publisher_init_default(&pub_tof, &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
     "/tof_distance_cm"));
+  RCCHECK(rclc_publisher_init_default(&pub_wheel_odom, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
+    "/wheel/odometry"));
 
   // Subscriptions
   RCCHECK(rclc_subscription_init_default(&sub_left_ring, &node,
@@ -357,11 +537,13 @@ void setup() {
   // Timers
   RCCHECK(rclc_timer_init_default(&timer_1hz,  &support, RCL_MS_TO_NS(1000), timer_1hz_cb));
   RCCHECK(rclc_timer_init_default(&timer_10hz, &support, RCL_MS_TO_NS(100),  timer_10hz_cb));
+  RCCHECK(rclc_timer_init_default(&timer_odom, &support, RCL_MS_TO_NS(ODOM_PUBLISH_MS), timer_odom_cb));
 
-  // Executor: 2 timers + 3 subscriptions = 5 handles
-  RCCHECK(rclc_executor_init(&executor, &support.context, 5, &allocator));
+  // Executor: 3 timers + 3 subscriptions = 6 handles
+  RCCHECK(rclc_executor_init(&executor, &support.context, 6, &allocator));
   RCCHECK(rclc_executor_add_timer(&executor, &timer_1hz));
   RCCHECK(rclc_executor_add_timer(&executor, &timer_10hz));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer_odom));
   RCCHECK(rclc_executor_add_subscription(&executor, &sub_left_ring,  &msg_sub_left,  &left_ring_cb,  ON_NEW_DATA));
   RCCHECK(rclc_executor_add_subscription(&executor, &sub_right_ring, &msg_sub_right, &right_ring_cb, ON_NEW_DATA));
   RCCHECK(rclc_executor_add_subscription(&executor, &sub_cmd_vel,    &msg_cmd_vel,   &cmd_vel_cb,    ON_NEW_DATA));

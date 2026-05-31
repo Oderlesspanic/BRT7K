@@ -264,6 +264,88 @@ hr {
   background: #333;
 }
 
+.log-panel {
+  margin-top: 14px;
+  border-top: 1px solid #333;
+  padding-top: 12px;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.log-toolbar h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.log-toolbar button {
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: white;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.log-toolbar button:hover {
+  background: #555;
+}
+
+.log-console {
+  height: 180px;
+  overflow-y: auto;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 74px 64px minmax(100px, 180px) 1fr;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-time,
+.log-node {
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-level {
+  font-weight: bold;
+}
+
+.log-entry.warn .log-level {
+  color: #ffd400;
+}
+
+.log-entry.error .log-level,
+.log-entry.fatal .log-level {
+  color: #ff5c5c;
+}
+
 @media (max-width: 1200px) {
   .dashboard {
     grid-template-columns: 280px 1fr;
@@ -283,5 +365,13 @@ hr {
   .map-tile {
     grid-column: auto;
     grid-row: auto;
+  }
+
+  .log-entry {
+    grid-template-columns: 58px 52px 1fr;
+  }
+
+  .log-node {
+    display: none;
   }
 }
