@@ -91,6 +91,8 @@ batteryTopic.subscribe((msg) => {
 // {
 //   "lidar": "green",
 //   "camera": "green",
+//   "esp32_drive": "green",
+//   "esp32_gripper": "yellow",
 //   "imu": "green",
 //   "magnetometer": "red"
 // }
@@ -108,6 +110,8 @@ systemStatusTopic.subscribe((msg) => {
 
     setLamp("lidar", status.lidar);
     setLamp("camera", status.camera);
+    setLamp("esp_drive", status.esp32_drive);
+    setLamp("esp_gripper", status.esp32_gripper);
     setLamp("imu", status.imu);
     setLamp("magnetometer", status.magnetometer);
 
