@@ -352,6 +352,8 @@ class TaskManagerNode(Node):
             return False, f"Unbekanntes Target '{target_name}'. Bekannt: {known}"
 
         if action == "start":
+            if target_name == "mapping":
+                return self._start_mapping_with_prerequisites()
             return self._start_target(target_name)
         if action == "stop":
             return self._stop_target(target_name)
@@ -431,6 +433,20 @@ class TaskManagerNode(Node):
 
         start_success, start_message = self._start_target(target_name)
         return start_success, f"{stop_message}\n{start_message}"
+
+    def _start_mapping_with_prerequisites(self) -> Tuple[bool, str]:
+        messages = []
+        for prerequisite in ("description", "hardware", "odometry"):
+            if prerequisite not in self._managed:
+                continue
+            success, message = self._start_target(prerequisite)
+            messages.append(message)
+            if not success:
+                return False, "\n".join(messages)
+
+        success, message = self._start_target("mapping")
+        messages.append(message)
+        return success, "\n".join(messages)
 
     def _publish_status(self) -> None:
         msg = String()
