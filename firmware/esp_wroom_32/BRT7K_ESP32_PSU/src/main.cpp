@@ -31,6 +31,7 @@
 #define INA226_CALIB_VAL 1024
 #define INA226_SDA       32
 #define INA226_SCL       33
+#define INA226_INIT_ATTEMPTS 5
 
 // ─────────────────────────────────────────────
 //  Battery capacity (adjust to your pack)
@@ -91,6 +92,7 @@ static float    s_consumed_wh = 0.0f;
 static float    s_consumed_ah = 0.0f;
 static uint32_t s_last_ms     = 0;
 static float    s_tof_cm      = TOF_OUT_OF_RANGE;
+static bool     s_ina226_ok   = false;
 
 // ─────────────────────────────────────────────
 //  ROS 2 objects
@@ -128,6 +130,11 @@ void ina226_write_reg(uint8_t reg, uint16_t val) {
   Wire.write((uint8_t)(val >> 8));
   Wire.write((uint8_t)(val & 0xFF));
   Wire.endTransmission();
+}
+
+bool ina226_is_present() {
+  Wire.beginTransmission(INA226_ADDR);
+  return Wire.endTransmission() == 0;
 }
 
 int16_t ina226_read_reg(uint8_t reg) {
@@ -303,13 +310,23 @@ void setup() {
 
   // INA226 on custom I2C pins
   Wire.begin(INA226_SDA, INA226_SCL);
-  while (true) {
-    Wire.beginTransmission(INA226_ADDR);
-    if (Wire.endTransmission() == 0) break;
+  for (int attempt = 0; attempt < INA226_INIT_ATTEMPTS; attempt++) {
+    if (ina226_is_present()) {
+      s_ina226_ok = true;
+      break;
+    }
+
     blinkLED(LED_RED, 1, 300);
     delay(1000);
   }
-  ina226_write_reg(INA226_REG_CALIB, INA226_CALIB_VAL);
+
+  if (s_ina226_ok) {
+    ina226_write_reg(INA226_REG_CALIB, INA226_CALIB_VAL);
+  } else {
+    s_voltage_V = NAN;
+    s_current_A = NAN;
+  }
+
   s_last_ms = millis();
 
   // Motors
@@ -387,19 +404,21 @@ void loop() {
   if (dt_ms > 0) {
     s_last_ms = now;
 
-    float v   = ina226_read_reg(INA226_REG_VOLT) * 0.00125f;  // V
-    float cur = ina226_read_reg(INA226_REG_CURR) * 0.0005f;   // A
-    s_voltage_V = v;
-    s_current_A = cur;
+    if (s_ina226_ok) {
+      float v   = ina226_read_reg(INA226_REG_VOLT) * 0.00125f;  // V
+      float cur = ina226_read_reg(INA226_REG_CURR) * 0.0005f;   // A
+      s_voltage_V = v;
+      s_current_A = cur;
 
-    float dt_h     = dt_ms / 3600000.0f;
-    s_consumed_wh += v * cur * dt_h;  // power integral [Wh]
-    s_consumed_ah += cur * dt_h;      // current integral [Ah]
+      float dt_h     = dt_ms / 3600000.0f;
+      s_consumed_wh += v * cur * dt_h;  // power integral [Wh]
+      s_consumed_ah += cur * dt_h;      // current integral [Ah]
 
-    if (s_consumed_wh < 0.0f) s_consumed_wh = 0.0f;
-    if (s_consumed_wh > BATTERY_CAPACITY_WH) s_consumed_wh = BATTERY_CAPACITY_WH;
-    if (s_consumed_ah < 0.0f) s_consumed_ah = 0.0f;
-    if (s_consumed_ah > BATTERY_CAPACITY_AH) s_consumed_ah = BATTERY_CAPACITY_AH;
+      if (s_consumed_wh < 0.0f) s_consumed_wh = 0.0f;
+      if (s_consumed_wh > BATTERY_CAPACITY_WH) s_consumed_wh = BATTERY_CAPACITY_WH;
+      if (s_consumed_ah < 0.0f) s_consumed_ah = 0.0f;
+      if (s_consumed_ah > BATTERY_CAPACITY_AH) s_consumed_ah = BATTERY_CAPACITY_AH;
+    }
 
     s_tof_cm = readTofCm();
   }
