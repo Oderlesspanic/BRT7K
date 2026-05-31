@@ -27,13 +27,6 @@ def generate_launch_description():
         "madgwick_with_cov_fix.launch.py"
     )
 
-    odometry_dir = get_package_share_directory("odometry")
-    odometry_launch = os.path.join(
-        odometry_dir,
-        "launch",
-        "wheel_odometry.launch.py"
-    )
-
     ekf_dir = get_package_share_directory("ekf")
     ekf_launch = os.path.join(
         ekf_dir,
@@ -51,9 +44,6 @@ def generate_launch_description():
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(imu_mag_fusion_launch)
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(odometry_launch)
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ekf_launch)
