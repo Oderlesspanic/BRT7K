@@ -29,8 +29,8 @@
 #define INA226_REG_CURR  0x04   // 0.5 mA/LSB
 #define INA226_REG_CALIB 0x05
 #define INA226_CALIB_VAL 1024
-#define INA226_SDA       32
-#define INA226_SCL       33
+#define INA226_SDA       33
+#define INA226_SCL       32
 #define INA226_INIT_ATTEMPTS 5
 
 // ─────────────────────────────────────────────
