@@ -1,7 +1,10 @@
 #include "hardware_supervisor/hardware_supervisor_node.hpp"
 
 #include <chrono>
+#include <map>
 #include <memory>
+#include <sstream>
+#include <string>
 
 #include "hardware_supervisor/composite_device_monitor.hpp"
 #include "hardware_supervisor/usb_monitor.hpp"
@@ -18,6 +21,11 @@ HardwareSupervisorNode::HardwareSupervisorNode()
   status_pub_ =
     create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
       "/diagnostics",
+      10);
+
+  system_status_pub_ =
+    create_publisher<std_msgs::msg::String>(
+      "/system_status",
       10);
 
   const auto period =
@@ -129,4 +137,49 @@ void HardwareSupervisorNode::publish_status()
     hardware_id_);
 
   status_pub_->publish(msg);
+  system_status_pub_->publish(build_system_status_msg(msg));
+}
+
+std_msgs::msg::String HardwareSupervisorNode::build_system_status_msg(
+  const diagnostic_msgs::msg::DiagnosticArray & diagnostics) const
+{
+  std::map<std::string, std::string> status_by_device;
+
+  for (const auto & status : diagnostics.status) {
+    std::string color = "red";
+
+    if (status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+      color = "green";
+    } else if (status.level == diagnostic_msgs::msg::DiagnosticStatus::WARN ||
+      status.level == diagnostic_msgs::msg::DiagnosticStatus::STALE)
+    {
+      color = "yellow";
+    }
+
+    std::string name = status.name;
+    if (name == "camera_csi") {
+      name = "camera";
+    }
+
+    status_by_device[name] = color;
+  }
+
+  std::ostringstream json;
+  json << "{";
+
+  bool first = true;
+  for (const auto & item : status_by_device) {
+    if (!first) {
+      json << ",";
+    }
+
+    json << "\"" << item.first << "\":\"" << item.second << "\"";
+    first = false;
+  }
+
+  json << "}";
+
+  std_msgs::msg::String msg;
+  msg.data = json.str();
+  return msg;
 }
