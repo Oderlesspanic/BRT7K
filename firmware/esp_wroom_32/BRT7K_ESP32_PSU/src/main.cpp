@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
+#include <INA226.h>
 
 // --- micro-ROS ---
 #include <micro_ros_arduino.h>
@@ -20,15 +21,9 @@
 #define BRT7K_ROLE "drive"
 
 // ─────────────────────────────────────────────
-//  INA226 (I2C on D32/D33, raw — no external lib)
-//  Shunt: 10 mOhm, Current-LSB: 0.5 mA
-//  CAL = 0.00512 / (0.0005 A x 0.01 Ohm) = 1024
+//  INA226 (I2C on D33/D32)
 // ─────────────────────────────────────────────
-#define INA226_ADDR      0x40
-#define INA226_REG_VOLT  0x02   // 1.25 mV/LSB
-#define INA226_REG_CURR  0x04   // 0.5 mA/LSB
-#define INA226_REG_CALIB 0x05
-#define INA226_CALIB_VAL 1024
+#define INA226_ADDR      0x41
 #define INA226_SDA       33
 #define INA226_SCL       32
 #define INA226_INIT_ATTEMPTS 5
@@ -82,6 +77,7 @@
 // ─────────────────────────────────────────────
 Adafruit_NeoPixel ring1(NUM_LEDS, NEO_PIN_1, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel ring2(NUM_LEDS, NEO_PIN_2, NEO_GRB + NEO_KHZ800);
+INA226 ina226(INA226_ADDR);
 
 // ─────────────────────────────────────────────
 //  Integration state (written in loop, read in timers)
@@ -120,30 +116,6 @@ rcl_node_t      node;
 
 #define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){errorLoop();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
-
-// ─────────────────────────────────────────────
-//  INA226
-// ─────────────────────────────────────────────
-void ina226_write_reg(uint8_t reg, uint16_t val) {
-  Wire.beginTransmission(INA226_ADDR);
-  Wire.write(reg);
-  Wire.write((uint8_t)(val >> 8));
-  Wire.write((uint8_t)(val & 0xFF));
-  Wire.endTransmission();
-}
-
-bool ina226_is_present() {
-  Wire.beginTransmission(INA226_ADDR);
-  return Wire.endTransmission() == 0;
-}
-
-int16_t ina226_read_reg(uint8_t reg) {
-  Wire.beginTransmission(INA226_ADDR);
-  Wire.write(reg);
-  Wire.endTransmission(false);
-  Wire.requestFrom((uint8_t)INA226_ADDR, (uint8_t)2);
-  return (int16_t)((Wire.read() << 8) | Wire.read());
-}
 
 // ─────────────────────────────────────────────
 //  CRC-8 Dallas/Maxim  (poly 0x31, init 0x00)
@@ -311,7 +283,7 @@ void setup() {
   // INA226 on custom I2C pins
   Wire.begin(INA226_SDA, INA226_SCL);
   for (int attempt = 0; attempt < INA226_INIT_ATTEMPTS; attempt++) {
-    if (ina226_is_present()) {
+    if (ina226.begin()) {
       s_ina226_ok = true;
       break;
     }
@@ -321,7 +293,10 @@ void setup() {
   }
 
   if (s_ina226_ok) {
-    ina226_write_reg(INA226_REG_CALIB, INA226_CALIB_VAL);
+    ina226.setMaxCurrentShunt(10.0, 0.002);
+    ina226.setBusVoltageConversionTime(INA226_1100_us);
+    ina226.setShuntVoltageConversionTime(INA226_1100_us);
+    ina226.setAverage(INA226_16_SAMPLES);
   } else {
     s_voltage_V = NAN;
     s_current_A = NAN;
@@ -405,8 +380,8 @@ void loop() {
     s_last_ms = now;
 
     if (s_ina226_ok) {
-      float v   = ina226_read_reg(INA226_REG_VOLT) * 0.00125f;  // V
-      float cur = ina226_read_reg(INA226_REG_CURR) * 0.0005f;   // A
+      float v   = ina226.getBusVoltage();
+      float cur = ina226.getCurrent();
       s_voltage_V = v;
       s_current_A = cur;
 
