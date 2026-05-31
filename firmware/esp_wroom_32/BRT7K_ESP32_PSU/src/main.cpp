@@ -44,7 +44,7 @@
 #define MOTOR_RIGHT_RX   16
 #define MOTOR_RIGHT_TX   17
 #define MOTOR_BAUD       115200
-#define LEFT_ID          0x01
+#define LEFT_ID          0x02
 #define RIGHT_ID         0x01
 #define MAX_RPM          210.0f
 
