@@ -12,7 +12,7 @@ def generate_launch_description():
     sllidar_launch = os.path.join(
         sllidar_dir,
         "launch",
-        "sllidar_a1_launch.py"
+        "sllidar_c1_launch.py"
     )
 
     hardware_supervisor_dir = get_package_share_directory("hardware_supervisor")
@@ -29,7 +29,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(sllidar_launch),
             launch_arguments={
                 "serial_port": "/dev/lidar",
-                "serial_baudrate": "115200",
+                "serial_baudrate": "460800",
                 "frame_id": "laser_link"
             }.items()
         ),
