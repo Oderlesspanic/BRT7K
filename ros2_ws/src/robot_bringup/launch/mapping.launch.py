@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -33,11 +33,21 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(mapping_launch)
         ),
 
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(navigation_slam_launch)
+        TimerAction(
+            period=6.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(navigation_slam_launch)
+                )
+            ]
         ),
 
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(frontier_explorer_launch)
+        TimerAction(
+            period=8.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(frontier_explorer_launch)
+                )
+            ]
         )
     ])
