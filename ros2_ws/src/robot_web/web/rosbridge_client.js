@@ -78,6 +78,7 @@
       this.name = options.name;
       this.messageType = options.messageType;
       this.callbacks = [];
+      this.advertised = false;
 
       this.ros.on("message", (message) => {
         if (message.op === "publish" && message.topic === this.name) {
@@ -95,7 +96,19 @@
       });
     }
 
+    advertise() {
+      if (this.advertised) return;
+
+      this.ros.sendEncoded({
+        op: "advertise",
+        topic: this.name,
+        type: this.messageType,
+      });
+      this.advertised = true;
+    }
+
     publish(message) {
+      this.advertise();
       this.ros.sendEncoded({
         op: "publish",
         topic: this.name,
