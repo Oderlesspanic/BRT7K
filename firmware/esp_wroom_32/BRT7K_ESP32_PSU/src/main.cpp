@@ -41,8 +41,8 @@
 // ─────────────────────────────────────────────
 #define MOTOR_LEFT_RX    21
 #define MOTOR_LEFT_TX    22
-#define MOTOR_RIGHT_RX   16
-#define MOTOR_RIGHT_TX   17
+#define MOTOR_RIGHT_RX   17
+#define MOTOR_RIGHT_TX   16
 #define MOTOR_BAUD       115200
 #define LEFT_ID          0x02
 #define RIGHT_ID         0x01
