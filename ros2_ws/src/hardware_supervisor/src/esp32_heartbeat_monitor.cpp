@@ -29,7 +29,7 @@ std::string ESP32HeartbeatMonitor::name() const
 
 bool ESP32HeartbeatMonitor::is_present() const
 {
-    return std::filesystem::exists(device_path_);
+    return std::filesystem::exists(device_path_) || heartbeat_received_;
 }
 
 bool ESP32HeartbeatMonitor::is_alive() const
@@ -48,7 +48,9 @@ bool ESP32HeartbeatMonitor::is_alive() const
 
 std::string ESP32HeartbeatMonitor::message() const
 {
-    if(!is_present()) {
+    const bool device_path_exists = std::filesystem::exists(device_path_);
+
+    if(!device_path_exists && !heartbeat_received_) {
         return "ESP32 "+ name_ + " is missing at " + device_path_;
     }
 
@@ -64,6 +66,10 @@ std::string ESP32HeartbeatMonitor::message() const
         << ", age = " << age 
         << " seconds ago, which exceeds the timeout= " << timeout_ << " seconds.";
         return ss.str();
+    }
+
+    if(!device_path_exists) {
+        return "Device heartbeat is recent, but " + device_path_ + " does not exist.";
     }
 
     return "Device is alive and heartbeat is recent.";
