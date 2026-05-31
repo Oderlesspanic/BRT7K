@@ -221,7 +221,9 @@ void announceBoardRole() {
   Serial.begin(115200);
 
   for (int i = 0; i < 20; i++) {
-    Serial.println("BRT7K_ROLE");
+    Serial.print("BRT7K_ROLE=");
+    Serial.println(BRT7K_ROLE);
+    Serial.flush();
     delay(250);
   }
 }
