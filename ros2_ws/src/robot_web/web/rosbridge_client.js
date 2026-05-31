@@ -108,12 +108,19 @@
     }
 
     publish(message) {
-      this.advertise();
-      this.ros.sendEncoded({
+      const sendPublish = () => this.ros.sendEncoded({
         op: "publish",
         topic: this.name,
         msg: message,
       });
+
+      if (!this.advertised) {
+        this.advertise();
+        setTimeout(sendPublish, 20);
+        return;
+      }
+
+      sendPublish();
     }
   }
 
