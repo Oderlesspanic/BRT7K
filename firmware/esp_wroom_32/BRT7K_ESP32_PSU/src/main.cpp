@@ -39,10 +39,10 @@
 //  Left:  Serial1  RX=D21  TX=D22
 //  Right: Serial2  RX=D16  TX=D17
 // ─────────────────────────────────────────────
-#define MOTOR_LEFT_RX    21
-#define MOTOR_LEFT_TX    22
-#define MOTOR_RIGHT_RX   16
-#define MOTOR_RIGHT_TX   17
+#define MOTOR_LEFT_RX    16
+#define MOTOR_LEFT_TX    17
+#define MOTOR_RIGHT_RX   21
+#define MOTOR_RIGHT_TX   22
 #define MOTOR_BAUD       115200
 #define LEFT_ID          0x01
 #define RIGHT_ID         0x01
