@@ -1,4 +1,5 @@
 from launch import LaunchDescription
+from launch.actions import ExecuteProcess, TimerAction
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
@@ -20,15 +21,22 @@ def generate_launch_description():
             output='screen',
             parameters=[mapping_config]
         ),
-        Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_slam',
-            output='screen',
-            parameters=[{
-                'use_sim_time': False,
-                'autostart': True,
-                'node_names': ['slam_toolbox']
-            }]
+        TimerAction(
+            period=2.0,
+            actions=[
+                ExecuteProcess(
+                    cmd=['ros2', 'lifecycle', 'set', '/slam_toolbox', 'configure'],
+                    output='screen'
+                )
+            ]
+        ),
+        TimerAction(
+            period=4.0,
+            actions=[
+                ExecuteProcess(
+                    cmd=['ros2', 'lifecycle', 'set', '/slam_toolbox', 'activate'],
+                    output='screen'
+                )
+            ]
         )
     ])

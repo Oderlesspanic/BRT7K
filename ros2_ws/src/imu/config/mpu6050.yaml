@@ -9,7 +9,7 @@ mpu6050_node:
     # Frame
     frame_id: "imu_link"
     # Update rate
-    update_rate: 100.0
+    update_rate: 5.0
     # Noise covariance
     angular_velocity_covariance: [0.01, 0.0, 0.0,
                                   0.0, 0.01, 0.0,

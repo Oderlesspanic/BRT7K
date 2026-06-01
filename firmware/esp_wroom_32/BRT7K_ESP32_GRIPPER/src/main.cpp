@@ -8,6 +8,8 @@
 #include <std_msgs/msg/empty.h>
 #include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/int32.h>
+#include <std_msgs/msg/string.h>
+#include <rosidl_runtime_c/string_functions.h>
 #include "SparkFun_Qwiic_Scale_NAU7802_Arduino_Library.h"
 
 /*
@@ -33,6 +35,7 @@
  *
  * ROS Topics:
  *   SUB  /esp32_gripper/command      std_msgs/Float32  (target gap in m)
+ *   SUB  /esp32_gripper/manual       std_msgs/Int32    (0 stop, 1 open, 2 close, 3 lift up, 4 lift down)
  *   PUB  /esp32_gripper/is_closed    std_msgs/Bool   (on change)
  *   PUB  /esp32_gripper/heartbeat    std_msgs/Empty  (2 Hz)
  *   PUB  /esp32_gripper/lift_weight  std_msgs/Int32  (10 Hz, tared)
@@ -117,6 +120,10 @@ const uint8_t CH_LIFT   = 6;
 const uint8_t CH_GRIP_R = 5;
 
 int32_t scaleReadings[3] = { 0, 0, 0 }; // [LIFT, GRIP_L, GRIP_R]
+bool tcaOk = false;
+bool liftScaleOk = false;
+bool leftScaleOk = false;
+bool rightScaleOk = false;
 
 void tcaSelect(uint8_t ch) {
   if (ch > 7) return;
@@ -179,17 +186,37 @@ rcl_publisher_t    heartbeat_pub;
 rcl_publisher_t    lift_weight_pub;
 rcl_publisher_t    left_weight_pub;
 rcl_publisher_t    right_weight_pub;
+rcl_publisher_t    diagnostics_pub;
 rcl_subscription_t cmd_sub;
+rcl_subscription_t manual_sub;
 
 std_msgs__msg__Bool                  is_closed_msg;
 std_msgs__msg__Empty                 heartbeat_msg;
 std_msgs__msg__Int32                 lift_weight_msg;
 std_msgs__msg__Int32                 left_weight_msg;
 std_msgs__msg__Int32                 right_weight_msg;
+std_msgs__msg__String                diagnostics_msg;
 std_msgs__msg__Float32               cmd_msg;
+std_msgs__msg__Int32                 manual_msg;
 
 enum class AgentState : uint8_t { WAITING, CONNECTED };
 AgentState urosState = AgentState::WAITING;
+char diagnosticsText[180] = "INFO boot";
+bool serialDiagnosticsEnabled = true;
+int manualLiftCommand = 0;
+
+void setDiagnostics(const char* level, const char* text) {
+  snprintf(diagnosticsText, sizeof(diagnosticsText), "%s %s", level, text);
+  if (serialDiagnosticsEnabled) {
+    Serial.println(diagnosticsText);
+  }
+}
+
+void publishDiagnostics() {
+  rosidl_runtime_c__String__assign(&diagnostics_msg.data, diagnosticsText);
+  rcl_ret_t rc = rcl_publish(&diagnostics_pub, &diagnostics_msg, NULL);
+  (void)rc;
+}
 
 // ═══════════════════════ ISRs ════════════════════════════════════
 
@@ -278,14 +305,56 @@ void pollScales() {
   if (millis() - tLast < 100) return;
   tLast = millis();
 
+  if (!tcaOk) return;
+
   tcaSelect(CH_LIFT);
-  if (LiftingScale.available())     scaleReadings[0] = LiftingScale.getReading();
+  if (liftScaleOk && LiftingScale.available()) scaleReadings[0] = LiftingScale.getReading();
 
   tcaSelect(CH_GRIP_L);
-  if (LeftGripperScale.available())  scaleReadings[1] = LeftGripperScale.getReading();
+  if (leftScaleOk && LeftGripperScale.available()) scaleReadings[1] = LeftGripperScale.getReading();
 
   tcaSelect(CH_GRIP_R);
-  if (RightGripperScale.available()) scaleReadings[2] = RightGripperScale.getReading();
+  if (rightScaleOk && RightGripperScale.available()) scaleReadings[2] = RightGripperScale.getReading();
+}
+
+bool waitForTca() {
+  for (int attempt = 0; attempt < 10; attempt++) {
+    Wire.beginTransmission(TCAADDR);
+    if (Wire.endTransmission() == 0) {
+      setDiagnostics("INFO", "I2C mux TCA9548A gefunden");
+      return true;
+    }
+    setDiagnostics("WARN", "warte auf I2C mux TCA9548A");
+    delay(300);
+  }
+
+  setDiagnostics("ERROR", "I2C mux TCA9548A nicht gefunden, micro-ROS startet trotzdem");
+  return false;
+}
+
+bool initScale(NAU7802& scale, uint8_t channel, const char* name) {
+  if (!tcaOk) return false;
+
+  tcaSelect(channel);
+  for (int attempt = 0; attempt < 5; attempt++) {
+    if (scale.begin()) {
+      char message[96];
+      snprintf(message, sizeof(message), "%s Waage gefunden, tariere", name);
+      setDiagnostics("INFO", message);
+      scale.calculateZeroOffset(32);
+      return true;
+    }
+
+    char message[96];
+    snprintf(message, sizeof(message), "warte auf %s Waage", name);
+    setDiagnostics("WARN", message);
+    delay(300);
+  }
+
+  char message[112];
+  snprintf(message, sizeof(message), "%s Waage nicht gefunden, gripper startet ohne diese Waage", name);
+  setDiagnostics("ERROR", message);
+  return false;
 }
 
 // ═══════════════════════ Gripper Position Control ═══════════════
@@ -370,8 +439,46 @@ void updateStateMachine() {
 void gripper_cmd_callback(const void* msgin) {
   const std_msgs__msg__Float32* msg =
     (const std_msgs__msg__Float32*)msgin;
+  manualLiftCommand = 0;
   targetPositionM = msg->data;
   newCommand      = true;
+}
+
+void manual_cmd_callback(const void* msgin) {
+  const std_msgs__msg__Int32* msg = (const std_msgs__msg__Int32*)msgin;
+
+  switch (msg->data) {
+    case 0:
+      manualLiftCommand = 0;
+      newCommand = false;
+      gripperState = GripperState::READY;
+      stopAll();
+      setDiagnostics("INFO", "manual stop");
+      break;
+    case 1:
+      manualLiftCommand = 0;
+      targetPositionM = GRIP_OPEN_M;
+      newCommand = true;
+      setDiagnostics("INFO", "manual gripper open");
+      break;
+    case 2:
+      manualLiftCommand = 0;
+      targetPositionM = 0.0;
+      newCommand = true;
+      setDiagnostics("INFO", "manual gripper close");
+      break;
+    case 3:
+      manualLiftCommand = 1;
+      setDiagnostics("INFO", "manual lift up");
+      break;
+    case 4:
+      manualLiftCommand = -1;
+      setDiagnostics("INFO", "manual lift down");
+      break;
+    default:
+      setDiagnostics("WARN", "unbekannter manual command");
+      break;
+  }
 }
 
 // ═══════════════════════ micro-ROS Lifecycle ════════════════════
@@ -401,6 +508,11 @@ void createEntities() {
     "/esp32_gripper/heartbeat");
 
   rclc_publisher_init_default(
+    &diagnostics_pub, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "/esp32_gripper/diagnostics");
+
+  rclc_publisher_init_default(
     &lift_weight_pub, &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
     "/esp32_gripper/lift_weight");
@@ -420,11 +532,21 @@ void createEntities() {
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
     "/esp32_gripper/command");
 
-  rclc_executor_init(&executor, &support.context, 1, &allocator);
+  rclc_subscription_init_default(
+    &manual_sub, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "/esp32_gripper/manual");
+
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
   rclc_executor_add_subscription(
     &executor, &cmd_sub, &cmd_msg, &gripper_cmd_callback, ON_NEW_DATA);
+  rclc_executor_add_subscription(
+    &executor, &manual_sub, &manual_msg, &manual_cmd_callback, ON_NEW_DATA);
 
   is_closed_msg.data = false;
+  std_msgs__msg__String__init(&diagnostics_msg);
+  setDiagnostics("INFO", "micro-ROS verbunden, gripper heartbeat aktiv");
+  publishDiagnostics();
 }
 
 void destroyEntities() {
@@ -433,13 +555,16 @@ void destroyEntities() {
 
   rcl_publisher_fini(&is_closed_pub,    &node);
   rcl_publisher_fini(&heartbeat_pub,    &node);
+  rcl_publisher_fini(&diagnostics_pub,  &node);
   rcl_publisher_fini(&lift_weight_pub,  &node);
   rcl_publisher_fini(&left_weight_pub,  &node);
   rcl_publisher_fini(&right_weight_pub, &node);
   rcl_subscription_fini(&cmd_sub, &node);
+  rcl_subscription_fini(&manual_sub, &node);
   rclc_executor_fini(&executor);
   rcl_node_fini(&node);
   rclc_support_fini(&support);
+  std_msgs__msg__String__fini(&diagnostics_msg);
 }
 
 // ═══════════════════════ Setup ══════════════════════════════════
@@ -449,6 +574,7 @@ void setup() {
 
   // micro-ROS serial transport (UART0 / USB)
   set_microros_transports();
+  serialDiagnosticsEnabled = false;
   delay(2000);
 
   // Motors
@@ -478,23 +604,16 @@ void setup() {
   // I2C + Scales
   Wire.begin(IIC_MUX_SDA, IIC_MUX_SCL);
 
-  while (true) {
-    Wire.beginTransmission(TCAADDR);
-    if (Wire.endTransmission() == 0) break;
-    delay(3000);
+  tcaOk = waitForTca();
+  liftScaleOk = initScale(LiftingScale, CH_LIFT, "Lift");
+  leftScaleOk = initScale(LeftGripperScale, CH_GRIP_L, "Links");
+  rightScaleOk = initScale(RightGripperScale, CH_GRIP_R, "Rechts");
+
+  if (!tcaOk || !liftScaleOk || !leftScaleOk || !rightScaleOk) {
+    setDiagnostics("WARN", "Hardware unvollstaendig, micro-ROS startet fuer Diagnose und Heartbeat");
+  } else {
+    setDiagnostics("INFO", "Gripper Hardware initialisiert");
   }
-
-  tcaSelect(CH_LIFT);
-  while (!LiftingScale.begin()) delay(3000);
-  LiftingScale.calculateZeroOffset(32);
-
-  tcaSelect(CH_GRIP_L);
-  while (!LeftGripperScale.begin()) delay(3000);
-  LeftGripperScale.calculateZeroOffset(32);
-
-  tcaSelect(CH_GRIP_R);
-  while (!RightGripperScale.begin()) delay(3000);
-  RightGripperScale.calculateZeroOffset(32);
 }
 
 // ═══════════════════════ Loop ═══════════════════════════════════
@@ -531,13 +650,33 @@ void loop() {
 
       checkLimits();
       pollScales();
-      updateStateMachine();
+      if (manualLiftCommand > 0) {
+        setMotor(MOTOR_LIFT, LIFT_SPEED);
+      } else if (manualLiftCommand < 0) {
+        setMotor(MOTOR_LIFT, -LIFT_SPEED);
+      } else {
+        updateStateMachine();
+      }
 
       // Heartbeat @ 2 Hz
       static uint32_t tHb = 0;
       if (millis() - tHb >= 500) {
         tHb = millis();
         rcl_publish(&heartbeat_pub, &heartbeat_msg, NULL);
+      }
+
+      // Diagnostics @ 1 Hz
+      static uint32_t tDiag = 0;
+      if (millis() - tDiag >= 1000) {
+        tDiag = millis();
+        if (!tcaOk) {
+          setDiagnostics("ERROR", "I2C mux TCA9548A fehlt");
+        } else if (!liftScaleOk || !leftScaleOk || !rightScaleOk) {
+          setDiagnostics("WARN", "eine oder mehrere Waagen fehlen");
+        } else {
+          setDiagnostics("INFO", "running");
+        }
+        publishDiagnostics();
       }
 
       // Weight data @ 10 Hz

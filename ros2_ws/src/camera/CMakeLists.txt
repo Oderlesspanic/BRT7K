@@ -8,6 +8,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBCAMERA REQUIRED libcamera)
@@ -29,6 +30,7 @@ add_executable(camera_node
 ament_target_dependencies(camera_node
   rclcpp
   sensor_msgs
+  std_msgs
 )
 
 target_link_libraries(camera_node

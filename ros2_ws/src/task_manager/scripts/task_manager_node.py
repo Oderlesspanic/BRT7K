@@ -110,6 +110,7 @@ class TaskManagerNode(Node):
         self._managed: Dict[str, ManagedLaunch] = {
             target.name: ManagedLaunch(target) for target in self._targets
         }
+        self._start_all_target_names = self._load_start_all_targets()
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._command_sub = self.create_subscription(
@@ -175,6 +176,23 @@ class TaskManagerNode(Node):
 
         return targets
 
+    def _load_start_all_targets(self) -> List[str]:
+        default_targets = [
+            "description",
+            "web",
+            "hardware",
+            "vision",
+            "odometry",
+        ]
+        self.declare_parameter("start_all_targets", default_targets)
+        configured_targets = [
+            str(name) for name in self.get_parameter("start_all_targets").value
+        ]
+        return [
+            name for name in configured_targets
+            if name in self._managed
+        ]
+
     def _parse_target_spec(self, spec: str) -> Optional[LaunchTarget]:
         parts = spec.split(":", maxsplit=3)
         if len(parts) < 3:
@@ -218,7 +236,7 @@ class TaskManagerNode(Node):
         response: Trigger.Response,
     ) -> Trigger.Response:
         del request
-        results = [self._start_target(name)[1] for name in self._managed]
+        results = [self._start_target(name)[1] for name in self._start_all_target_names]
         response.success = True
         response.message = "\n".join(results)
         return response
@@ -241,7 +259,7 @@ class TaskManagerNode(Node):
     ) -> Trigger.Response:
         del request
         stop_results = [self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))]
-        start_results = [self._start_target(name)[1] for name in self._managed]
+        start_results = [self._start_target(name)[1] for name in self._start_all_target_names]
         response.success = True
         response.message = "\n".join(stop_results + start_results)
         return response
@@ -334,7 +352,7 @@ class TaskManagerNode(Node):
     def _execute_action(self, action: str, target_name: str) -> Tuple[bool, str]:
         if target_name == "all":
             if action == "start":
-                messages = [self._start_target(name)[1] for name in self._managed]
+                messages = [self._start_target(name)[1] for name in self._start_all_target_names]
                 return True, "\n".join(messages)
             if action == "stop":
                 messages = [
@@ -344,7 +362,7 @@ class TaskManagerNode(Node):
             messages = [
                 self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))
             ]
-            messages.extend(self._start_target(name)[1] for name in self._managed)
+            messages.extend(self._start_target(name)[1] for name in self._start_all_target_names)
             return True, "\n".join(messages)
 
         if target_name not in self._managed:

@@ -34,7 +34,7 @@ def generate_launch_description():
         ),
 
         TimerAction(
-            period=6.0,
+            period=12.0,
             actions=[
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource(navigation_slam_launch)
@@ -43,7 +43,7 @@ def generate_launch_description():
         ),
 
         TimerAction(
-            period=8.0,
+            period=16.0,
             actions=[
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource(frontier_explorer_launch)

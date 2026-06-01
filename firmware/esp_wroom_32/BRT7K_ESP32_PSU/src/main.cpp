@@ -13,6 +13,7 @@
 #include <std_msgs/msg/int32.h>
 #include <std_msgs/msg/empty.h>
 #include <std_msgs/msg/float32.h>
+#include <std_msgs/msg/string.h>
 #include <sensor_msgs/msg/battery_state.h>
 #include <geometry_msgs/msg/twist.h>
 #include <nav_msgs/msg/odometry.h>
@@ -51,6 +52,8 @@
 #define LEFT_ID          0x01
 #define RIGHT_ID         0x01
 #define MAX_RPM          210.0f
+#define MOTOR_RAMP_RPM_PER_S 120.0f
+#define MOTOR_RAMP_UPDATE_MS 20
 
 // ─────────────────────────────────────────────
 //  SHARP Analog TOF (D4)
@@ -104,6 +107,12 @@ static float    s_odom_x_m         = 0.0f;
 static float    s_odom_y_m         = 0.0f;
 static float    s_odom_yaw_rad     = 0.0f;
 
+static float    s_target_left_rpm  = 0.0f;
+static float    s_target_right_rpm = 0.0f;
+static float    s_current_left_rpm = 0.0f;
+static float    s_current_right_rpm = 0.0f;
+static uint32_t s_last_motor_ramp_ms = 0;
+
 // ─────────────────────────────────────────────
 //  ROS 2 objects
 // ─────────────────────────────────────────────
@@ -111,6 +120,7 @@ rcl_publisher_t    pub_battery;
 rcl_publisher_t    pub_heartbeat;
 rcl_publisher_t    pub_tof;
 rcl_publisher_t    pub_wheel_odom;
+rcl_publisher_t    pub_diagnostics;
 rcl_subscription_t sub_left_ring;
 rcl_subscription_t sub_right_ring;
 rcl_subscription_t sub_cmd_vel;
@@ -121,6 +131,7 @@ rcl_timer_t        timer_odom;
 sensor_msgs__msg__BatteryState  msg_battery;
 std_msgs__msg__Empty            msg_heartbeat;
 std_msgs__msg__Float32          msg_tof;
+std_msgs__msg__String           msg_diagnostics;
 nav_msgs__msg__Odometry         msg_wheel_odom;
 std_msgs__msg__Int32            msg_sub_left;
 std_msgs__msg__Int32            msg_sub_right;
@@ -130,6 +141,18 @@ rclc_executor_t executor;
 rclc_support_t  support;
 rcl_allocator_t allocator;
 rcl_node_t      node;
+
+static char s_diagnostics_text[180] = "INFO boot";
+
+static void setDiagnostics(const char * level, const char * text) {
+  snprintf(s_diagnostics_text, sizeof(s_diagnostics_text), "%s %s", level, text);
+}
+
+static void publishDiagnostics() {
+  rosidl_runtime_c__String__assign(&msg_diagnostics.data, s_diagnostics_text);
+  rcl_ret_t rc = rcl_publish(&pub_diagnostics, &msg_diagnostics, NULL);
+  (void)rc;
+}
 
 #define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){errorLoop();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
@@ -202,6 +225,29 @@ static void motorSetSpeedRPM(Stream &port, uint8_t id, float rpm) {
   int16_t v  = (int16_t)lroundf(rpm * 10.0f);
   uint8_t f[10] = { id, 0x64, (uint8_t)(v >> 8), (uint8_t)(v & 0xFF), 0,0,0,0,0, 0 };
   sendFrame(port, f);
+}
+
+static float rampToward(float current, float target, float max_delta) {
+  float delta = target - current;
+  if (delta > max_delta) return current + max_delta;
+  if (delta < -max_delta) return current - max_delta;
+  return target;
+}
+
+static void updateMotorRamp() {
+  uint32_t now = millis();
+  uint32_t dt_ms = now - s_last_motor_ramp_ms;
+  if (dt_ms < MOTOR_RAMP_UPDATE_MS) return;
+
+  s_last_motor_ramp_ms = now;
+  float max_delta = MOTOR_RAMP_RPM_PER_S * (dt_ms / 1000.0f);
+  s_current_left_rpm = rampToward(s_current_left_rpm, s_target_left_rpm, max_delta);
+  s_current_right_rpm = rampToward(s_current_right_rpm, s_target_right_rpm, max_delta);
+
+  drainRx(Serial1);
+  motorSetSpeedRPM(Serial1, LEFT_ID, s_current_left_rpm);
+  drainRx(Serial2);
+  motorSetSpeedRPM(Serial2, RIGHT_ID, -s_current_right_rpm);  // right motor physically mirrored
 }
 
 static bool motorReadMileage(Stream &port, uint8_t id, int32_t &laps, uint16_t &position) {
@@ -332,16 +378,27 @@ void cmd_vel_cb(const void * msgin) {
   float lin = (float)msg->linear.x;   // m/s
   float ang = (float)msg->angular.z;  // rad/s
 
+  if (fabsf(lin) < 0.001f && fabsf(ang) < 0.001f) {
+    s_target_left_rpm = 0.0f;
+    s_target_right_rpm = 0.0f;
+    s_current_left_rpm = 0.0f;
+    s_current_right_rpm = 0.0f;
+    drainRx(Serial1);
+    motorSetSpeedRPM(Serial1, LEFT_ID, 0.0f);
+    drainRx(Serial2);
+    motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
+    setDiagnostics("INFO", "cmd_vel stop sofort ausgefuehrt");
+    return;
+  }
+
   // Differential drive: v_l/r = lin -/+ ang * wheelbase/2
   // RPM = velocity / (2*pi*r) * 60
   static constexpr float rpm_factor = 60.0f / (2.0f * 3.14159265f * WHEEL_RADIUS_M);
   float rpm_left  = (lin - ang * WHEEL_BASE_M * 0.5f) * rpm_factor;
   float rpm_right = (lin + ang * WHEEL_BASE_M * 0.5f) * rpm_factor;
 
-  drainRx(Serial1);
-  motorSetSpeedRPM(Serial1, LEFT_ID,   rpm_left);
-  drainRx(Serial2);
-  motorSetSpeedRPM(Serial2, RIGHT_ID, -rpm_right);  // right motor physically mirrored
+  s_target_left_rpm = constrain(rpm_left, -MAX_RPM, MAX_RPM);
+  s_target_right_rpm = constrain(rpm_right, -MAX_RPM, MAX_RPM);
 }
 
 // 1 Hz — BatteryState + heartbeat
@@ -357,8 +414,15 @@ void timer_1hz_cb(rcl_timer_t * t, int64_t last_call_time) {
   msg_battery.capacity   = BATTERY_CAPACITY_AH;
   msg_battery.percentage = 1.0f - (s_consumed_wh / BATTERY_CAPACITY_WH);
 
+  if (s_ina226_ok) {
+    setDiagnostics("INFO", "running");
+  } else {
+    setDiagnostics("WARN", "running, INA226 fehlt");
+  }
+
   RCSOFTCHECK(rcl_publish(&pub_battery,   &msg_battery,   NULL));
   RCSOFTCHECK(rcl_publish(&pub_heartbeat, &msg_heartbeat, NULL));
+  publishDiagnostics();
 }
 
 // 10 Hz — TOF distance
@@ -380,8 +444,14 @@ void timer_odom_cb(rcl_timer_t * t, int64_t last_call_time) {
   uint16_t left_position = 0;
   uint16_t right_position = 0;
 
-  if (!motorReadMileage(Serial1, LEFT_ID, left_laps, left_position)) return;
-  if (!motorReadMileage(Serial2, RIGHT_ID, right_laps, right_position)) return;
+  if (!motorReadMileage(Serial1, LEFT_ID, left_laps, left_position)) {
+    setDiagnostics("ERROR", "linker Motor liefert keine Encoder-Mileage");
+    return;
+  }
+  if (!motorReadMileage(Serial2, RIGHT_ID, right_laps, right_position)) {
+    setDiagnostics("ERROR", "rechter Motor liefert keine Encoder-Mileage");
+    return;
+  }
 
   const float left_revolutions =
     (float)left_laps + ((float)left_position / ENCODER_STEPS_PER_REV);
@@ -472,9 +542,11 @@ void setup() {
     ina226.setBusVoltageConversionTime(INA226_1100_us);
     ina226.setShuntVoltageConversionTime(INA226_1100_us);
     ina226.setAverage(INA226_16_SAMPLES);
+    setDiagnostics("INFO", "INA226 initialisiert");
   } else {
     s_voltage_V = NAN;
     s_current_A = NAN;
+    setDiagnostics("WARN", "INA226 nicht gefunden, drive startet ohne Batteriemessung");
   }
 
   s_last_ms = millis();
@@ -489,12 +561,14 @@ void setup() {
   delay(10);
   motorSetSpeedRPM(Serial1, LEFT_ID,  0.0f);
   motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
+  s_last_motor_ramp_ms = millis();
 
   // ADC resolution for SHARP TOF
   analogReadResolution(12);
 
   // BatteryState initial values
   sensor_msgs__msg__BatteryState__init(&msg_battery);
+  std_msgs__msg__String__init(&msg_diagnostics);
   msg_battery.temperature             = NAN;
   msg_battery.charge                  = BATTERY_CAPACITY_AH;
   msg_battery.capacity                = BATTERY_CAPACITY_AH;
@@ -525,6 +599,9 @@ void setup() {
   RCCHECK(rclc_publisher_init_default(&pub_wheel_odom, &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
     "/wheel/odometry"));
+  RCCHECK(rclc_publisher_init_default(&pub_diagnostics, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "/esp32_drive/diagnostics"));
 
   // Subscriptions
   RCCHECK(rclc_subscription_init_default(&sub_left_ring, &node,
@@ -549,6 +626,8 @@ void setup() {
   RCCHECK(rclc_executor_add_subscription(&executor, &sub_cmd_vel,    &msg_cmd_vel,   &cmd_vel_cb,    ON_NEW_DATA));
 
   digitalWrite(LED_GREEN, HIGH);
+  setDiagnostics("INFO", "micro-ROS verbunden, drive heartbeat und wheel odometry aktiv");
+  publishDiagnostics();
 }
 
 // ─────────────────────────────────────────────
@@ -580,6 +659,7 @@ void loop() {
     s_tof_cm = readTofCm();
   }
 
+  updateMotorRamp();
   RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1)));
   delay(5);
 }
