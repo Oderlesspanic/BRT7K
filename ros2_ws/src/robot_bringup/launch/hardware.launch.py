@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess
+from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -7,54 +7,31 @@ import os
 
 def generate_launch_description():
 
-    sllidar_dir = get_package_share_directory("sllidar_ros2")
-
-    sllidar_launch = os.path.join(
-        sllidar_dir,
-        "launch",
-        "sllidar_c1_launch.py"
-    )
-
-    hardware_supervisor_dir = get_package_share_directory("hardware_supervisor")
-
+    robot_bringup_dir = get_package_share_directory("robot_bringup")
+    lidar_launch = os.path.join(robot_bringup_dir, "launch", "lidar.launch.py")
     hardware_supervisor_launch = os.path.join(
-        hardware_supervisor_dir,
+        robot_bringup_dir,
         "launch",
         "hardware_supervisor.launch.py"
     )
+    esp_drive_agent_launch = os.path.join(robot_bringup_dir, "launch", "esp_drive_agent.launch.py")
+    esp_gripper_agent_launch = os.path.join(robot_bringup_dir, "launch", "esp_gripper_agent.launch.py")
 
     return LaunchDescription([
 
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(sllidar_launch),
-            launch_arguments={
-                "serial_port": "/dev/lidar",
-                "serial_baudrate": "460800",
-                "frame_id": "laser_link"
-            }.items()
+            PythonLaunchDescriptionSource(lidar_launch)
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(hardware_supervisor_launch)
         ),
 
-        ExecuteProcess(
-            cmd=[
-                "ros2", "run", "micro_ros_agent", "micro_ros_agent",
-                "serial",
-                "--dev", "/dev/esp_drive",
-                "-b", "115200"
-            ],
-            output="screen"
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(esp_drive_agent_launch)
         ),
 
-        ExecuteProcess(
-            cmd=[
-                "ros2", "run", "micro_ros_agent", "micro_ros_agent",
-                "serial",
-                "--dev", "/dev/esp_gripper",
-                "-b", "115200"
-            ],
-            output="screen"
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(esp_gripper_agent_launch)
         ),
     ])

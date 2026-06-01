@@ -5,6 +5,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 
+#include <optional>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -30,11 +31,14 @@ private:
     bool map_received_;
     bool goal_active_;
     bool finish_requested_;
+    std::optional<rclcpp::Time> coverage_threshold_since_;
 
     std::string map_topic_;
     std::string action_name_;
     std::string finish_mapping_service_;
     double explore_period_;
+    double completion_coverage_ratio_;
+    double completion_hold_time_;
     int no_frontier_count_;
     int no_frontier_finish_count_;
     bool auto_finish_enabled_;
@@ -44,4 +48,6 @@ private:
     void timerCallback();
     void sendGoal(const geometry_msgs::msg::PoseStamped & goal);
     void requestMappingFinish();
+    double calculateCoverageRatio(const nav_msgs::msg::OccupancyGrid & map) const;
+    bool shouldFinishByCoverage();
 };

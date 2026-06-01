@@ -6,6 +6,33 @@ body {
   padding: 20px;
 }
 
+body.map-page {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.map-page #mapCanvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  border: none;
+  background: #111;
+}
+
+.map-status {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #eee;
+  font: 12px "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  pointer-events: none;
+}
+
 h1 {
   margin-bottom: 20px;
 }
@@ -110,6 +137,7 @@ h1 {
 
 .control-cross button,
 .mode-buttons button,
+.tool-grid button,
 .start-mapping-button,
 .send-button {
   font-size: 18px;
@@ -122,6 +150,7 @@ h1 {
 
 .control-cross button:hover,
 .mode-buttons button:hover,
+.tool-grid button:hover,
 .start-mapping-button:hover,
 .send-button:hover {
   background: #555;
@@ -185,6 +214,42 @@ button:disabled:hover {
 
 .mode-buttons button.active {
   background: #145caa;
+}
+
+.manual-tool-panel {
+  margin-top: 18px;
+}
+
+.manual-tool-panel h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tool-grid button {
+  min-height: 44px;
+  padding: 10px;
+}
+
+.tool-grid .danger {
+  grid-column: 1 / -1;
+  background: #7a1c1c;
+}
+
+.map-link {
+  display: inline-block;
+  color: #8ec5ff;
+  margin: -4px 0 10px 0;
+  text-decoration: none;
+}
+
+.map-link:hover {
+  text-decoration: underline;
 }
 
 hr {

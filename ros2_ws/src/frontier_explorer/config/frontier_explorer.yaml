@@ -8,5 +8,7 @@ frontier_explorer_node:
     # Anzahl aufeinanderfolgender Explorer-Zyklen ohne Frontier,
     # bevor Map Saver, Mapping-Stop und Navigation-Start ausgelöst werden.
     no_frontier_finish_count: 5
+    completion_coverage_ratio: 0.99
+    completion_hold_time: 15.0
 
     finish_mapping_service: "/task_manager/finish_mapping"

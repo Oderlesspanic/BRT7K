@@ -74,6 +74,16 @@ void FrontierExplorerNode::loadParameters()
         5
     );
 
+    this->declare_parameter<double>(
+        "completion_coverage_ratio",
+        0.99
+    );
+
+    this->declare_parameter<double>(
+        "completion_hold_time",
+        15.0
+    );
+
     this->declare_parameter<std::string>(
         "finish_mapping_service",
         "/task_manager/finish_mapping"
@@ -93,6 +103,12 @@ void FrontierExplorerNode::loadParameters()
 
     no_frontier_finish_count_ =
         this->get_parameter("no_frontier_finish_count").as_int();
+
+    completion_coverage_ratio_ =
+        this->get_parameter("completion_coverage_ratio").as_double();
+
+    completion_hold_time_ =
+        this->get_parameter("completion_hold_time").as_double();
 
     finish_mapping_service_ =
         this->get_parameter("finish_mapping_service").as_string();
@@ -117,6 +133,16 @@ void FrontierExplorerNode::timerCallback()
             "Noch keine Map erhalten"
         );
 
+        return;
+    }
+
+    if (
+        auto_finish_enabled_ &&
+        !finish_requested_ &&
+        shouldFinishByCoverage()
+    )
+    {
+        requestMappingFinish();
         return;
     }
 
@@ -251,6 +277,69 @@ void FrontierExplorerNode::sendGoal(
         };
 
     nav_client_->async_send_goal(nav_goal, options);
+}
+
+double FrontierExplorerNode::calculateCoverageRatio(
+    const nav_msgs::msg::OccupancyGrid & map
+) const
+{
+    if (map.data.empty())
+    {
+        return 0.0;
+    }
+
+    std::size_t known_cells = 0;
+    for (const auto cell : map.data)
+    {
+        if (cell != -1)
+        {
+            known_cells++;
+        }
+    }
+
+    return static_cast<double>(known_cells) / static_cast<double>(map.data.size());
+}
+
+bool FrontierExplorerNode::shouldFinishByCoverage()
+{
+    const double coverage_ratio =
+        calculateCoverageRatio(current_map_);
+
+    if (coverage_ratio < completion_coverage_ratio_)
+    {
+        coverage_threshold_since_.reset();
+        return false;
+    }
+
+    const auto now = this->now();
+    if (!coverage_threshold_since_.has_value())
+    {
+        coverage_threshold_since_ = now;
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Map-Abdeckung %.1f%% erreicht; warte %.1f s vor Abschluss",
+            coverage_ratio * 100.0,
+            completion_hold_time_
+        );
+        return false;
+    }
+
+    const double held_seconds =
+        (now - coverage_threshold_since_.value()).seconds();
+
+    if (held_seconds < completion_hold_time_)
+    {
+        return false;
+    }
+
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Map-Abdeckung %.1f%% seit %.1f s stabil; Mapping wird abgeschlossen",
+        coverage_ratio * 100.0,
+        held_seconds
+    );
+
+    return true;
 }
 
 void FrontierExplorerNode::requestMappingFinish()

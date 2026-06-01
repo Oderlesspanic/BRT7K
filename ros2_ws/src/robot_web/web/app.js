@@ -92,18 +92,46 @@ rosoutTopic.subscribe((msg) => {
   appendRosLog(msg);
 });
 
+[
+  { name: "/camera/status_text", node: "camera_node" },
+  { name: "/esp32_drive/diagnostics", node: "esp32_drive" },
+  { name: "/esp32_gripper/diagnostics", node: "esp32_gripper" }
+].forEach((source) => {
+  const topic = new ROSLIB.Topic({
+    ros: ros,
+    name: source.name,
+    messageType: "std_msgs/String"
+  });
+
+  topic.subscribe((msg) => {
+    appendTextLog(source.node, msg.data || "");
+  });
+});
+
 btnClearLogs.addEventListener("click", () => {
   rosLogConsole.replaceChildren();
 });
 
 function appendRosLog(msg) {
   const level = ROS_LOG_LEVELS[msg.level] || String(msg.level);
+  appendLogEntry(level, msg.name || "-", msg.msg || "", formatRosStamp(msg.stamp));
+}
+
+function appendTextLog(nodeName, text) {
+  const match = String(text).match(/^(DEBUG|INFO|WARN|ERROR|FATAL)\s+(.*)$/);
+  const level = match ? match[1] : "INFO";
+  const message = match ? match[2] : String(text);
+  if (level === "DEBUG" || level === "INFO") return;
+  appendLogEntry(level, nodeName, message, new Date().toLocaleTimeString());
+}
+
+function appendLogEntry(level, nodeName, text, stampText) {
   const entry = document.createElement("div");
   entry.className = `log-entry ${level.toLowerCase()}`;
 
   const time = document.createElement("span");
   time.className = "log-time";
-  time.textContent = formatRosStamp(msg.stamp);
+  time.textContent = stampText;
 
   const levelNode = document.createElement("span");
   levelNode.className = "log-level";
@@ -111,12 +139,12 @@ function appendRosLog(msg) {
 
   const node = document.createElement("span");
   node.className = "log-node";
-  node.title = msg.name || "";
-  node.textContent = msg.name || "-";
+  node.title = nodeName;
+  node.textContent = nodeName;
 
   const message = document.createElement("span");
   message.className = "log-message";
-  message.textContent = msg.msg || "";
+  message.textContent = text;
 
   entry.append(time, levelNode, node, message);
   rosLogConsole.appendChild(entry);
@@ -222,6 +250,11 @@ const btnStartMapping = document.getElementById("btnStartMapping");
 const btnManual = document.getElementById("btnManual");
 const btnAuto = document.getElementById("btnAuto");
 const btnSendObjectCommand = document.getElementById("btnSendObjectCommand");
+const btnGripOpen = document.getElementById("btnGripOpen");
+const btnGripClose = document.getElementById("btnGripClose");
+const btnLiftUp = document.getElementById("btnLiftUp");
+const btnLiftDown = document.getElementById("btnLiftDown");
+const btnGripperStop = document.getElementById("btnGripperStop");
 
 const startMappingService = new ROSLIB.Service({
   ros: ros,
@@ -269,6 +302,10 @@ function updateActionButtons() {
   btnStartMapping.classList.toggle("hidden", mappingActive || mappingCompleted);
 
   btnSendObjectCommand.disabled = !autoMode;
+
+  [btnGripOpen, btnGripClose, btnLiftUp, btnLiftDown, btnGripperStop].forEach((button) => {
+    button.disabled = !manualMode;
+  });
 }
 
 btnStartMapping.addEventListener("click", async () => {
@@ -323,6 +360,18 @@ const cmdVelTopic = new ROSLIB.Topic({
   messageType: "geometry_msgs/Twist"
 });
 
+const gripperCommandTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/esp32_gripper/command",
+  messageType: "std_msgs/Float32"
+});
+
+const gripperManualTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/esp32_gripper/manual",
+  messageType: "std_msgs/Int32"
+});
+
 function sendCmdVel(linearX, angularZ) {
   if (!manualMode) return;
 
@@ -362,8 +411,51 @@ document.getElementById("btnRight").addEventListener("click", () => {
 
 document.getElementById("btnStop").addEventListener("click", async () => {
   sendCmdVel(0.0, 0.0);
+  sendGripperManual(0);
   await stopActiveWork();
 });
+
+function sendGripperGap(gapMeters) {
+  if (!manualMode) return;
+  gripperCommandTopic.publish(new ROSLIB.Message({
+    data: gapMeters
+  }));
+}
+
+function sendGripperManual(command) {
+  if (!manualMode) return;
+  gripperManualTopic.publish(new ROSLIB.Message({
+    data: command
+  }));
+}
+
+btnGripOpen.addEventListener("click", () => {
+  sendGripperGap(0.08);
+});
+
+btnGripClose.addEventListener("click", () => {
+  sendGripperGap(0.0);
+});
+
+bindHoldButton(btnLiftUp, 3);
+bindHoldButton(btnLiftDown, 4);
+
+btnGripperStop.addEventListener("click", () => {
+  sendGripperManual(0);
+});
+
+function bindHoldButton(button, command) {
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    sendGripperManual(command);
+  });
+
+  ["pointerup", "pointerleave", "pointercancel"].forEach((eventName) => {
+    button.addEventListener(eventName, () => {
+      sendGripperManual(0);
+    });
+  });
+}
 
 // ----------------------------------------------------
 // Modus: /robot_mode std_msgs/String

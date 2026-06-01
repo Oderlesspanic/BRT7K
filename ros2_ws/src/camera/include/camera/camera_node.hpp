@@ -7,6 +7,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "camera/libcamera_driver.hpp"
 
 class CameraNode : public rclcpp::Node
@@ -17,17 +18,23 @@ public:
 
 private:
     void timer_callback();
+    void status_timer_callback();
+    void publish_status(const std::string & level, const std::string & message);
 
     std::shared_ptr<LibcameraDriver> driver_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
     rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::TimerBase::SharedPtr status_timer_;
 
     std::string frame_id_;
     std::string topic_name_;
     std::string camera_info_topic_;
+    std::string status_text_;
     std::string distortion_model_;
     std::vector<double> distortion_coefficients_;
+    bool camera_running_;
     double fx_;
     double fy_;
     double cx_;
