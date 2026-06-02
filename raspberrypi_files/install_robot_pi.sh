@@ -271,9 +271,9 @@ for _ in {1..60}; do
   sleep 1
 done
 
-# Mapping and normal navigation are intentionally not started here.
-# Mapping remains a web-GUI action; navigation starts after finish_mapping saved a map.
-for target in description web hardware vision odometry; do
+# Start only the dashboard stack. Robot subsystems are controlled explicitly
+# through the web GUI or task_manager services.
+for target in web; do
   ros2 service call "/task_manager/start_\${target}" std_srvs/srv/Trigger "{}" || true
   sleep 1
 done

@@ -210,6 +210,21 @@ const btnGripClose = document.getElementById("btnGripClose");
 const btnLiftUp = document.getElementById("btnLiftUp");
 const btnLiftDown = document.getElementById("btnLiftDown");
 const btnGripperStop = document.getElementById("btnGripperStop");
+const serviceControlList = document.getElementById("serviceControlList");
+
+const TASK_MANAGER_TARGETS = [
+  { id: "description", label: "Description" },
+  { id: "hardware", label: "Hardware" },
+  { id: "odometry", label: "Odometry" },
+  { id: "mapping", label: "Mapping" },
+  { id: "navigation_slam", label: "Nav SLAM" },
+  { id: "frontier_explorer", label: "Frontier" },
+  { id: "vision", label: "Vision" }
+];
+
+const taskManagerServices = new Map();
+const taskManagerRows = new Map();
+const taskManagerStates = new Map();
 
 const startMappingService = new ROSLIB.Service({
   ros: ros,
@@ -229,7 +244,7 @@ const cancelObjectTaskService = new ROSLIB.Service({
   serviceType: "std_srvs/srv/Trigger"
 });
 
-function callTriggerService(service) {
+function callTriggerService(service, timeoutMs = 15000) {
   return new Promise((resolve) => {
     const timeout = window.setTimeout(() => {
       resolve({
@@ -237,7 +252,7 @@ function callTriggerService(service) {
         success: false,
         message: "Keine Antwort vom Service"
       });
-    }, 8000);
+    }, timeoutMs);
 
     service.callService({}, (response, result) => {
       window.clearTimeout(timeout);
@@ -247,6 +262,101 @@ function callTriggerService(service) {
         message: response ? response.message : ""
       });
     });
+  });
+}
+
+function getTaskManagerService(action, target) {
+  const key = `${action}:${target}`;
+  if (!taskManagerServices.has(key)) {
+    taskManagerServices.set(key, new ROSLIB.Service({
+      ros: ros,
+      name: `/task_manager/${action}_${target}`,
+      serviceType: "std_srvs/srv/Trigger"
+    }));
+  }
+
+  return taskManagerServices.get(key);
+}
+
+function renderServiceControls() {
+  if (!serviceControlList) return;
+
+  serviceControlList.replaceChildren();
+
+  TASK_MANAGER_TARGETS.forEach((target) => {
+    const row = document.createElement("div");
+    row.className = "service-row";
+
+    const name = document.createElement("span");
+    name.className = "service-name";
+    name.textContent = target.label;
+
+    const state = document.createElement("span");
+    state.className = "service-state stopped";
+    state.textContent = "stopped";
+
+    const startButton = document.createElement("button");
+    startButton.type = "button";
+    startButton.textContent = "Start";
+
+    const stopButton = document.createElement("button");
+    stopButton.type = "button";
+    stopButton.textContent = "Stop";
+    stopButton.className = "danger";
+
+    startButton.addEventListener("click", () => runTaskManagerAction("start", target.id));
+    stopButton.addEventListener("click", () => runTaskManagerAction("stop", target.id));
+
+    row.append(name, state, startButton, stopButton);
+    serviceControlList.appendChild(row);
+    taskManagerRows.set(target.id, { row, state, startButton, stopButton });
+  });
+}
+
+async function runTaskManagerAction(action, target) {
+  const row = taskManagerRows.get(target);
+  if (row) {
+    row.startButton.disabled = true;
+    row.stopButton.disabled = true;
+    row.state.textContent = action === "start" ? "starting" : "stopping";
+    row.state.className = "service-state pending";
+  }
+
+  const response = await callTriggerService(
+    getTaskManagerService(action, target),
+    target === "mapping" || target === "navigation_slam" ? 90000 : 30000
+  );
+
+  if (!response.success) {
+    alert(`${target} ${action} fehlgeschlagen: ${response.message}`);
+  }
+
+  updateServiceControls();
+}
+
+function parseTaskManagerStatus(statusText) {
+  taskManagerStates.clear();
+
+  String(statusText || "").split("\n").forEach((line) => {
+    const match = line.match(/^([^:]+):\s+(\w+)/);
+    if (!match) return;
+    taskManagerStates.set(match[1], match[2]);
+  });
+}
+
+function updateServiceControls() {
+  TASK_MANAGER_TARGETS.forEach((target) => {
+    const row = taskManagerRows.get(target.id);
+    if (!row) return;
+
+    const state = taskManagerStates.get(target.id) || "unknown";
+    const running = state === "running";
+    const exited = state === "exited";
+
+    row.state.textContent = state;
+    row.state.className = `service-state ${running ? "running" : exited ? "exited" : "stopped"}`;
+    row.startButton.disabled = running;
+    row.stopButton.disabled = !running;
   });
 }
 
@@ -286,6 +396,9 @@ const taskManagerStatusTopic = new ROSLIB.Topic({
 });
 
 taskManagerStatusTopic.subscribe((msg) => {
+  parseTaskManagerStatus(msg.data);
+  updateServiceControls();
+
   const mappingRunning = /^mapping:\s+running\b/m.test(msg.data);
 
   if (mappingActive && !mappingRunning && !mappingStoppedByUser) {
@@ -300,6 +413,8 @@ taskManagerStatusTopic.subscribe((msg) => {
 
   updateActionButtons();
 });
+
+renderServiceControls();
 
 const speedSlider = document.getElementById("speedSlider");
 const speedValue = document.getElementById("speedValue");

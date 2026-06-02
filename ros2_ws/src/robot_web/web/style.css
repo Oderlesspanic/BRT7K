@@ -121,6 +121,86 @@ h1 {
   color: limegreen;
 }
 
+.service-panel {
+  margin-top: 18px;
+  border-top: 1px solid #333;
+  padding-top: 14px;
+}
+
+.service-panel h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.service-control-list {
+  display: grid;
+  gap: 8px;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) 74px 58px 58px;
+  align-items: center;
+  gap: 8px;
+}
+
+.service-name {
+  font-size: 13px;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-state {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  text-align: center;
+  background: #333;
+  color: #bbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-state.running {
+  background: #145c2a;
+  color: white;
+}
+
+.service-state.pending {
+  background: #5c5014;
+  color: white;
+}
+
+.service-state.exited {
+  background: #5c1414;
+  color: white;
+}
+
+.service-row button {
+  min-height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.service-row button:hover {
+  background: #555;
+}
+
+.service-row button.danger {
+  background: #5c1414;
+}
+
+.service-row button.danger:hover {
+  background: #7a1c1c;
+}
+
 #speedSlider {
   width: 100%;
   margin-top: 10px;
