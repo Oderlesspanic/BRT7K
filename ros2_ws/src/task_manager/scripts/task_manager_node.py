@@ -78,6 +78,8 @@ from typing import Dict, List, Optional, Tuple
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from lifecycle_msgs.msg import Transition
+from lifecycle_msgs.srv import ChangeState, GetState
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
@@ -702,48 +704,60 @@ class TaskManagerNode(Node):
         return False, f"Timeout beim Warten auf {node_name} Lifecycle-State: {desired}"
 
     def _get_lifecycle_state(self, node_name: str) -> Optional[str]:
-        try:
-            result = subprocess.run(
-                ["ros2", "lifecycle", "get", node_name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=3.0,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
+        client = self.create_client(GetState, f"{node_name}/get_state")
+        if not client.wait_for_service(timeout_sec=1.0):
             return None
 
-        if result.returncode != 0:
+        future = client.call_async(GetState.Request())
+        deadline = time.monotonic() + 5.0
+        while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+        if not future.done():
             return None
 
-        output = (result.stdout or "").strip().lower()
-        if not output:
+        response = future.result()
+        if response is None:
             return None
 
-        return output.split()[0]
+        return str(response.current_state.label or "").lower()
 
     def _set_lifecycle_transition(
         self,
         node_name: str,
         transition: str,
     ) -> Tuple[bool, str]:
-        try:
-            result = subprocess.run(
-                ["ros2", "lifecycle", "set", node_name, transition],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=45.0,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return True, f"{node_name} lifecycle {transition}: wartet noch"
+        transition_ids = {
+            "configure": Transition.TRANSITION_CONFIGURE,
+            "activate": Transition.TRANSITION_ACTIVATE,
+        }
+        transition_id = transition_ids.get(transition)
+        if transition_id is None:
+            return False, f"{node_name} lifecycle {transition}: unbekannte Transition"
 
-        output = (result.stdout or "").strip()
-        if result.returncode != 0:
-            return False, f"{node_name} lifecycle {transition} fehlgeschlagen: {output}"
-        return True, f"{node_name} lifecycle {transition}: {output}"
+        client = self.create_client(ChangeState, f"{node_name}/change_state")
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, f"{node_name} lifecycle {transition}: Service nicht erreichbar"
+
+        request = ChangeState.Request()
+        request.transition.id = transition_id
+        request.transition.label = transition
+        future = client.call_async(request)
+        deadline = time.monotonic() + 60.0
+        while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+        if not future.done():
+            return False, f"{node_name} lifecycle {transition}: Timeout"
+
+        response = future.result()
+        if response is None:
+            return False, f"{node_name} lifecycle {transition}: keine Antwort"
+
+        if not response.success:
+            return False, f"{node_name} lifecycle {transition}: abgelehnt"
+
+        return True, f"{node_name} lifecycle {transition}: successful"
 
     def _wait_for_tf(
         self,
