@@ -116,8 +116,6 @@ class TaskManagerNode(Node):
         self._start_all_target_names = self._load_start_all_targets()
         self._log_dir = self._load_log_dir()
         self._log_dir.mkdir(parents=True, exist_ok=True)
-        self._mapping_start_lock = threading.Lock()
-        self._mapping_start_thread: Optional[threading.Thread] = None
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._command_sub = self.create_subscription(
@@ -389,18 +387,10 @@ class TaskManagerNode(Node):
 
         if action == "start":
             if target_name == "mapping":
-                return self._start_mapping_background()
+                return self._start_mapping_with_prerequisites()
             return self._start_target(target_name)
         if action == "stop":
-            if target_name == "mapping":
-                return self._stop_mapping_stack()
             return self._stop_target(target_name)
-        if target_name == "mapping":
-            stop_success, stop_message = self._stop_mapping_stack()
-            if not stop_success:
-                return False, stop_message
-            start_success, start_message = self._start_mapping_background()
-            return start_success, f"{stop_message}\n{start_message}"
         return self._restart_target(target_name)
 
     def _start_target(self, target_name: str) -> Tuple[bool, str]:
@@ -498,37 +488,6 @@ class TaskManagerNode(Node):
 
         start_success, start_message = self._start_target(target_name)
         return start_success, f"{stop_message}\n{start_message}"
-
-    def _start_mapping_background(self) -> Tuple[bool, str]:
-        with self._mapping_start_lock:
-            if self._mapping_start_thread is not None and self._mapping_start_thread.is_alive():
-                return True, "Mapping-Start laeuft bereits im Hintergrund"
-
-            self._mapping_start_thread = threading.Thread(
-                target=self._start_mapping_worker,
-                daemon=True,
-            )
-            self._mapping_start_thread.start()
-
-        return True, "Mapping-Startsequenz gestartet. Fortschritt: /task_manager/status und /tmp/brt7k-task-manager/*.log"
-
-    def _start_mapping_worker(self) -> None:
-        success, message = self._start_mapping_with_prerequisites()
-        if success:
-            self.get_logger().info(message)
-        else:
-            self.get_logger().error(message)
-
-    def _stop_mapping_stack(self) -> Tuple[bool, str]:
-        messages = []
-        for name in ("frontier_explorer", "navigation_slam", "mapping"):
-            if name not in self._managed:
-                continue
-            success, message = self._stop_target(name)
-            messages.append(message)
-            if not success:
-                return False, "\n".join(messages)
-        return True, "\n".join(messages)
 
     def _start_mapping_with_prerequisites(self) -> Tuple[bool, str]:
         messages = []
