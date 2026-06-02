@@ -39,8 +39,11 @@ private:
     double explore_period_;
     double completion_coverage_ratio_;
     double completion_hold_time_;
+    double goal_clearance_radius_;
+    double goal_search_radius_;
     int no_frontier_count_;
     int no_frontier_finish_count_;
+    int min_frontier_cluster_size_;
     bool auto_finish_enabled_;
 
     void loadParameters();

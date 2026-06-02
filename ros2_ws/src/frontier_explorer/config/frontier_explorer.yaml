@@ -3,6 +3,9 @@ frontier_explorer_node:
     map_topic: "/map"
     action_name: "navigate_to_pose"
     explore_period: 2.0
+    goal_clearance_radius: 0.25
+    goal_search_radius: 0.70
+    min_frontier_cluster_size: 8
     auto_finish_enabled: true
 
     # Anzahl aufeinanderfolgender Explorer-Zyklen ohne Frontier,

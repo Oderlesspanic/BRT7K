@@ -17,7 +17,10 @@ public:
     explicit FrontierExplorer();
 
     std::optional<FrontierPoint> findFrontier(
-        const nav_msgs::msg::OccupancyGrid & map
+        const nav_msgs::msg::OccupancyGrid & map,
+        int goal_clearance_cells,
+        int goal_search_radius_cells,
+        int min_frontier_cluster_size
     );
 
     geometry_msgs::msg::PoseStamped mapToPose(
@@ -38,10 +41,30 @@ private:
         int y
     );
 
+    bool isInBounds(
+        const nav_msgs::msg::OccupancyGrid & map,
+        int x,
+        int y
+    );
+
     bool isFrontier(
         const nav_msgs::msg::OccupancyGrid & map,
         int x,
         int y
+    );
+
+    bool hasClearance(
+        const nav_msgs::msg::OccupancyGrid & map,
+        int x,
+        int y,
+        int radius_cells
+    );
+
+    std::optional<FrontierPoint> findSafeGoalNear(
+        const nav_msgs::msg::OccupancyGrid & map,
+        const std::vector<FrontierPoint> & cluster,
+        int goal_clearance_cells,
+        int goal_search_radius_cells
     );
 
     int index(

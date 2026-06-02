@@ -1,6 +1,8 @@
 #include "frontier_explorer/frontier_explorer_node.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 using namespace std::chrono_literals;
 
@@ -64,6 +66,21 @@ void FrontierExplorerNode::loadParameters()
         2.0
     );
 
+    this->declare_parameter<double>(
+        "goal_clearance_radius",
+        0.25
+    );
+
+    this->declare_parameter<double>(
+        "goal_search_radius",
+        0.70
+    );
+
+    this->declare_parameter<int>(
+        "min_frontier_cluster_size",
+        8
+    );
+
     this->declare_parameter<bool>(
         "auto_finish_enabled",
         true
@@ -97,6 +114,15 @@ void FrontierExplorerNode::loadParameters()
 
     explore_period_ =
         this->get_parameter("explore_period").as_double();
+
+    goal_clearance_radius_ =
+        this->get_parameter("goal_clearance_radius").as_double();
+
+    goal_search_radius_ =
+        this->get_parameter("goal_search_radius").as_double();
+
+    min_frontier_cluster_size_ =
+        this->get_parameter("min_frontier_cluster_size").as_int();
 
     auto_finish_enabled_ =
         this->get_parameter("auto_finish_enabled").as_bool();
@@ -151,8 +177,35 @@ void FrontierExplorerNode::timerCallback()
         return;
     }
 
+    const double resolution = current_map_.info.resolution;
+    if (resolution <= 0.0)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Map hat ungueltige Aufloesung %.3f",
+            resolution
+        );
+        return;
+    }
+
+    const int goal_clearance_cells =
+        std::max(
+            1,
+            static_cast<int>(std::ceil(goal_clearance_radius_ / resolution))
+        );
+    const int goal_search_radius_cells =
+        std::max(
+            goal_clearance_cells,
+            static_cast<int>(std::ceil(goal_search_radius_ / resolution))
+        );
+
     auto frontier =
-        explorer_.findFrontier(current_map_);
+        explorer_.findFrontier(
+            current_map_,
+            goal_clearance_cells,
+            goal_search_radius_cells,
+            min_frontier_cluster_size_
+        );
 
     if (!frontier.has_value())
     {
