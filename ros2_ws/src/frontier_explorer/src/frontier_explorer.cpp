@@ -93,16 +93,32 @@ bool FrontierExplorer::hasClearance(
     int radius_cells
 )
 {
+    if (!isFree(map, x, y))
+    {
+        return false;
+    }
+
     for (int dy = -radius_cells; dy <= radius_cells; dy++)
     {
         for (int dx = -radius_cells; dx <= radius_cells; dx++)
         {
-            if ((dx * dx + dy * dy) > (radius_cells * radius_cells))
+            if ((dx * dx + dy * dy) > radius_cells * radius_cells)
             {
                 continue;
             }
 
-            if (!isFree(map, x + dx, y + dy))
+            int nx = x + dx;
+            int ny = y + dy;
+
+            if (!isInBounds(map, nx, ny))
+            {
+                return false;
+            }
+
+            int value = map.data[index(map, nx, ny)];
+
+            // alles außer sicher frei blockieren
+            if (value != 0)
             {
                 return false;
             }
