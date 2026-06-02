@@ -329,6 +329,10 @@ class TaskManagerNode(Node):
         self._stop_target("map_saver")
 
         self.get_logger().info("Stoppe Mapping/SLAM/Frontier/Nav2-SLAM")
+        if "frontier_explorer" in self._managed:
+            self._stop_target("frontier_explorer")
+        if "navigation_slam" in self._managed:
+            self._stop_target("navigation_slam")
         self._stop_target("mapping")
 
         self.get_logger().info("Starte Navigation mit gespeicherter Map")
@@ -495,7 +499,20 @@ class TaskManagerNode(Node):
 
         success, message = self._start_target("mapping")
         messages.append(message)
-        return success, "\n".join(messages)
+        if not success:
+            return False, "\n".join(messages)
+
+        time.sleep(12.0)
+
+        for followup in ("navigation_slam", "frontier_explorer"):
+            if followup not in self._managed:
+                continue
+            success, message = self._start_target(followup)
+            messages.append(message)
+            if not success:
+                return False, "\n".join(messages)
+
+        return True, "\n".join(messages)
 
     def _publish_status(self) -> None:
         msg = String()
