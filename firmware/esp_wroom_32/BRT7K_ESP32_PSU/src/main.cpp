@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
-#include <INA226.h>
+#include <Adafruit_INA260.h>
 #include <string.h>
 
 // --- micro-ROS ---
@@ -26,12 +26,11 @@
 #define BRT7K_ROLE "drive"
 
 // ─────────────────────────────────────────────
-//  INA226 (I2C on D33/D32)
+//  INA260 (I2C on D33/D32)
 // ─────────────────────────────────────────────
-#define INA226_ADDR      0x41
-#define INA226_SDA       33
-#define INA226_SCL       32
-#define INA226_INIT_ATTEMPTS 5
+#define INA260_SDA       33
+#define INA260_SCL       32
+#define INA260_INIT_ATTEMPTS 5
 
 // ─────────────────────────────────────────────
 //  Battery capacity (adjust to your pack)
@@ -86,7 +85,7 @@
 // ─────────────────────────────────────────────
 Adafruit_NeoPixel ring1(NUM_LEDS, NEO_PIN_1, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel ring2(NUM_LEDS, NEO_PIN_2, NEO_GRB + NEO_KHZ800);
-INA226 ina226(INA226_ADDR);
+Adafruit_INA260 ina260;
 
 // ─────────────────────────────────────────────
 //  Integration state (written in loop, read in timers)
@@ -97,7 +96,7 @@ static float    s_consumed_wh = 0.0f;
 static float    s_consumed_ah = 0.0f;
 static uint32_t s_last_ms     = 0;
 static float    s_tof_cm      = TOF_OUT_OF_RANGE;
-static bool     s_ina226_ok   = false;
+static bool     s_ina260_ok   = false;
 
 static bool     s_odom_ready       = false;
 static float    s_last_left_rad    = 0.0f;
@@ -414,10 +413,10 @@ void timer_1hz_cb(rcl_timer_t * t, int64_t last_call_time) {
   msg_battery.capacity   = BATTERY_CAPACITY_AH;
   msg_battery.percentage = 1.0f - (s_consumed_wh / BATTERY_CAPACITY_WH);
 
-  if (s_ina226_ok) {
+  if (s_ina260_ok) {
     setDiagnostics("INFO", "running");
   } else {
-    setDiagnostics("WARN", "running, INA226 fehlt");
+    setDiagnostics("WARN", "running, INA260 fehlt");
   }
 
   RCSOFTCHECK(rcl_publish(&pub_battery,   &msg_battery,   NULL));
@@ -525,11 +524,11 @@ void setup() {
   ring1.setBrightness(50); ring2.setBrightness(50);
   setRingColor(1, 0, 0, 0); setRingColor(2, 0, 0, 0);
 
-  // INA226 on custom I2C pins
-  Wire.begin(INA226_SDA, INA226_SCL);
-  for (int attempt = 0; attempt < INA226_INIT_ATTEMPTS; attempt++) {
-    if (ina226.begin()) {
-      s_ina226_ok = true;
+  // INA260 on custom I2C pins
+  Wire.begin(INA260_SDA, INA260_SCL);
+  for (int attempt = 0; attempt < INA260_INIT_ATTEMPTS; attempt++) {
+    if (ina260.begin()) {
+      s_ina260_ok = true;
       break;
     }
 
@@ -537,16 +536,12 @@ void setup() {
     delay(1000);
   }
 
-  if (s_ina226_ok) {
-    ina226.setMaxCurrentShunt(10.0, 0.002);
-    ina226.setBusVoltageConversionTime(INA226_1100_us);
-    ina226.setShuntVoltageConversionTime(INA226_1100_us);
-    ina226.setAverage(INA226_16_SAMPLES);
-    setDiagnostics("INFO", "INA226 initialisiert");
+  if (s_ina260_ok) {
+    setDiagnostics("INFO", "INA260 initialisiert");
   } else {
     s_voltage_V = NAN;
     s_current_A = NAN;
-    setDiagnostics("WARN", "INA226 nicht gefunden, drive startet ohne Batteriemessung");
+    setDiagnostics("WARN", "INA260 nicht gefunden, drive startet ohne Batteriemessung");
   }
 
   s_last_ms = millis();
@@ -631,7 +626,7 @@ void setup() {
 }
 
 // ─────────────────────────────────────────────
-//  Loop — fast INA226 + TOF integration (~6 ms)
+//  Loop — fast INA260 + TOF integration (~6 ms)
 // ─────────────────────────────────────────────
 void loop() {
   uint32_t now   = millis();
@@ -640,9 +635,9 @@ void loop() {
   if (dt_ms > 0) {
     s_last_ms = now;
 
-    if (s_ina226_ok) {
-      float v   = ina226.getBusVoltage();
-      float cur = ina226.getCurrent();
+    if (s_ina260_ok) {
+      float v   = ina260.readBusVoltage() / 1000.0f;
+      float cur = ina260.readCurrent() / 1000.0f;
       s_voltage_V = v;
       s_current_A = cur;
 
