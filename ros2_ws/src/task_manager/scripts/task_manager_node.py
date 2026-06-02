@@ -525,13 +525,10 @@ class TaskManagerNode(Node):
         if not success:
             return False, "\n".join(messages)
 
-        action_success, action_message = self._wait_for_action_server(
-            "/navigate_to_pose",
-            timeout_sec=120.0,
+        messages.append(
+            "navigation_slam startet im Hintergrund; "
+            "Status ueber /navigate_to_pose oder Log pruefen"
         )
-        messages.append(action_message)
-        if not action_success:
-            return False, "\n".join(messages)
 
         return True, "\n".join(messages)
 
