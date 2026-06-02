@@ -11,8 +11,8 @@ imu_covariance_fixer:
                                      0.0, 0.04, 0.0,
                                      0.0, 0.0, 0.04]
 
-    overwrite_orientation_covariance: false
+    overwrite_orientation_covariance: true
 
-    orientation_covariance: [0.0025, 0.0, 0.0,
-                             0.0, 0.0025, 0.0,
-                             0.0, 0.0, 0.0025]
+    orientation_covariance: [0.04, 0.0, 0.0,
+                             0.0, 0.04, 0.0,
+                             0.0, 0.0, 0.04]
