@@ -19,5 +19,16 @@ def generate_launch_description():
             name='slam_toolbox',
             output='screen',
             parameters=[mapping_config]
+        ),
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_slam',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'autostart': True,
+                'node_names': ['slam_toolbox'],
+            }]
         )
     ])

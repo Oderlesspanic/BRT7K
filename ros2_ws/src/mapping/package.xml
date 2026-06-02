@@ -16,6 +16,7 @@
   <depend>tf2_ros</depend>
   
   <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

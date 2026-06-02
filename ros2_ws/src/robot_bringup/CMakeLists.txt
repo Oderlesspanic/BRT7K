@@ -3,6 +3,11 @@ project(robot_bringup)
 
 find_package(ament_cmake REQUIRED)
 
+install(PROGRAMS
+  scripts/scan_timestamp_republisher.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY
   launch
   config
