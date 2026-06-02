@@ -20,6 +20,7 @@ def generate_launch_description():
                 "serial_port": "/dev/lidar",
                 "serial_baudrate": "460800",
                 "frame_id": "laser_link",
+                "scan_mode": "",
                 "scan_frequency": "5.0"
             }.items()
         ),

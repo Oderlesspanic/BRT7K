@@ -231,6 +231,10 @@ fi
 echo "==> Installing robot autostart launcher"
 install -m 0755 "${REPO_ROOT}/raspberrypi_files/brt7k_assign_serial.py" \
   /usr/local/bin/brt7k_assign_serial.py
+install -m 0644 "${REPO_ROOT}/raspberrypi_files/rplidar.rules" \
+  /etc/udev/rules.d/rplidar.rules
+udevadm control --reload-rules
+udevadm trigger
 
 cat > /usr/local/bin/brt7k_robot_autostart.sh <<EOF
 #!/usr/bin/env bash

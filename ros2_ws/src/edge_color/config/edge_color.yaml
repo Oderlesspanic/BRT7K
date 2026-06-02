@@ -8,7 +8,7 @@ color_edge_detection_node:
     debug_view: false
     publish_debug_image: true
 
-    # Mindestgröße für erkannte Flächen (Pixel)
+    # Mindestgroesse fuer erkannte Flaechen (Pixel)
     min_contour_area: 800.0
 
     saturation_min: 80
@@ -62,7 +62,7 @@ color_corner_validator_node:
     a3_height: 0.420
     a3_size_tolerance: 0.35
 
-    # Keine fixen Farben, aber kein weiß/grau/schwarz
+    # Keine fixen Farben, aber kein weiss/grau/schwarz
     min_s_for_color: 40.0
     min_v_for_color: 50.0
 

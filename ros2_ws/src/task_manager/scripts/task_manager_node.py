@@ -26,7 +26,7 @@ Der Node bietet die folgenden ROS 2 Services:
 - ~/stop_<target> (Trigger): Stoppt die angegebene Launch Datei.
 - ~/restart_<target> (Trigger): Startet die angegebene Launch Datei neu.
 
-Der Node veröffentlicht außerdem regelmäßig den Status aller verwalteten Launch Dateien auf dem Topic '~/status_text' (String).
+Der Node veroeffentlicht ausserdem regelmaessig den Status aller verwalteten Launch Dateien auf dem Topic '~/status_text' (String).
 Beispielbefehle über das Topic '~/command':
 - "status": Gibt den aktuellen Status aller Launch Dateien zurück.
 - "start <target>": Startet die angegebene Launch Datei.

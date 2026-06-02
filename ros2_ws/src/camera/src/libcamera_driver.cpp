@@ -1,9 +1,46 @@
 #include "camera/libcamera_driver.hpp"
 #include "camera/image_converter.hpp"
 
+#include <cstddef>
 #include <iostream>
 #include <sys/mman.h>
 #include <vector>
+
+namespace
+{
+struct MappedPlane
+{
+    void* base = MAP_FAILED;
+    size_t mapped_length = 0;
+    const uint8_t* data = nullptr;
+};
+
+MappedPlane map_plane(const libcamera::FrameBuffer::Plane &plane)
+{
+    const size_t offset = static_cast<size_t>(plane.offset);
+    const size_t length = static_cast<size_t>(plane.length);
+    MappedPlane mapped;
+
+    mapped.mapped_length = offset + length;
+    mapped.base = mmap(nullptr, mapped.mapped_length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+    if (mapped.base == MAP_FAILED) {
+        mapped.mapped_length = 0;
+        return mapped;
+    }
+
+    mapped.data = static_cast<const uint8_t*>(mapped.base) + offset;
+    return mapped;
+}
+
+void unmap_plane(MappedPlane &plane)
+{
+    if (plane.base != MAP_FAILED) {
+        munmap(plane.base, plane.mapped_length);
+    }
+
+    plane = {};
+}
+}
 
 LibcameraDriver::LibcameraDriver()
 : initialized_(false),
@@ -11,6 +48,8 @@ LibcameraDriver::LibcameraDriver()
   width_(640),
   height_(480),
   fps_(30),
+  y_stride_(640),
+  uv_stride_(320),
   stream_(nullptr)
 {
 }
@@ -64,6 +103,11 @@ bool LibcameraDriver::initialize(int width, int height, int fps)
 
     width_ = static_cast<int>(cfg.size.width);
     height_ = static_cast<int>(cfg.size.height);
+    y_stride_ = static_cast<int>(cfg.stride);
+    if (y_stride_ <= 0) {
+        y_stride_ = width_;
+    }
+    uv_stride_ = y_stride_ / 2;
 
     if (camera_->configure(config_.get()) != 0) {
         std::cerr << "camera configure fehlgeschlagen\n";
@@ -169,47 +213,34 @@ bool LibcameraDriver::capture_frame(std::vector<uint8_t>& data, uint64_t& timest
         return false;
     }
 
-    void* y_mem = mmap(nullptr, planes[0].length, PROT_READ, MAP_SHARED, planes[0].fd.get(), 0);
-    void* u_mem = mmap(nullptr, planes[1].length, PROT_READ, MAP_SHARED, planes[1].fd.get(), 0);
-    void* v_mem = mmap(nullptr, planes[2].length, PROT_READ, MAP_SHARED, planes[2].fd.get(), 0);
+    MappedPlane y_mem = map_plane(planes[0]);
+    MappedPlane u_mem = map_plane(planes[1]);
+    MappedPlane v_mem = map_plane(planes[2]);
 
-    if (y_mem == MAP_FAILED || u_mem == MAP_FAILED || v_mem == MAP_FAILED) {
-        if (y_mem != MAP_FAILED) {
-            munmap(y_mem, planes[0].length);
-        }
-        if (u_mem != MAP_FAILED) {
-            munmap(u_mem, planes[1].length);
-        }
-        if (v_mem != MAP_FAILED) {
-            munmap(v_mem, planes[2].length);
-        }
+    if (y_mem.base == MAP_FAILED || u_mem.base == MAP_FAILED || v_mem.base == MAP_FAILED) {
+        unmap_plane(y_mem);
+        unmap_plane(u_mem);
+        unmap_plane(v_mem);
 
         request->reuse(libcamera::Request::ReuseBuffers);
         camera_->queueRequest(request);
         return false;
     }
 
-    const uint8_t* y_plane = static_cast<const uint8_t*>(y_mem);
-    const uint8_t* u_plane = static_cast<const uint8_t*>(u_mem);
-    const uint8_t* v_plane = static_cast<const uint8_t*>(v_mem);
-
-    const int y_stride = width_;
-    const int uv_stride = width_ / 2;
-
     ImageConverter::yuv420_to_rgb(
-        y_plane,
-        u_plane,
-        v_plane,
+        y_mem.data,
+        u_mem.data,
+        v_mem.data,
         width_,
         height_,
-        y_stride,
-        uv_stride,
+        y_stride_,
+        uv_stride_,
         data
     );
 
-    munmap(y_mem, planes[0].length);
-    munmap(u_mem, planes[1].length);
-    munmap(v_mem, planes[2].length);
+    unmap_plane(y_mem);
+    unmap_plane(u_mem);
+    unmap_plane(v_mem);
 
     timestamp_ns = 0;
     if (buffer->metadata().timestamp) {
@@ -222,6 +253,16 @@ bool LibcameraDriver::capture_frame(std::vector<uint8_t>& data, uint64_t& timest
     }
 
     return true;
+}
+
+int LibcameraDriver::width() const
+{
+    return width_;
+}
+
+int LibcameraDriver::height() const
+{
+    return height_;
 }
 
 void LibcameraDriver::stop()

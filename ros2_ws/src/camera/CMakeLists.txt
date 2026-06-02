@@ -11,6 +11,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
 find_package(PkgConfig REQUIRED)
+set(ENV{PKG_CONFIG_PATH} "/usr/local/lib/aarch64-linux-gnu/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 pkg_check_modules(LIBCAMERA REQUIRED libcamera)
 
 include_directories(
