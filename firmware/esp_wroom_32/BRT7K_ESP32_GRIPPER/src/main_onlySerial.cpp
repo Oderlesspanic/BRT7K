@@ -61,10 +61,10 @@
 
 // ═══════════════════════ Encoder Limits ═════════════════════════
 
-#define GRIP_L_MIN  -5000
+#define GRIP_L_MIN  -6500
 #define GRIP_L_MAX      0
-#define GRIP_R_MIN  -5000
-#define GRIP_R_MAX      0
+#define GRIP_R_MIN      0
+#define GRIP_R_MAX   6500
 #define LIFT_MIN        0
 #define LIFT_MAX    20000
 
@@ -73,6 +73,23 @@
 const uint32_t PWM_FREQ = 20000;
 const uint8_t  PWM_RES  = 8;
 const int      PWM_MAX  = 255;
+
+// ═══════════════════════ Position Control Config ═════════════════
+
+const int32_t POS_TOLERANCE  = 50;
+const int32_t DECEL_ZONE     = 800;  // Counts vor Ziel: Bremszone beginnt
+const int     POS_MAX_SPD    = 250;  // Geschwindigkeit außerhalb Bremszone
+const int     POS_MIN_SPD    = 250;   // Mindestgeschwindigkeit in Bremszone
+
+// GRIP_L: pos. Speed → Encoder sinkt → Richtungsfaktor -1
+// GRIP_R + LIFT: Standard-Vorzeichen
+const int8_t  posCtrlDir[3]  = { -1, 1, 1 };
+
+const int32_t MOTOR_LIM_MIN[3] = { GRIP_L_MIN, GRIP_R_MIN, LIFT_MIN };
+const int32_t MOTOR_LIM_MAX[3] = { GRIP_L_MAX, GRIP_R_MAX, LIFT_MAX };
+
+struct PosCtrl { bool active; bool arrived; int32_t target; };
+PosCtrl posCtrl[3] = { {false,false,0}, {false,false,0}, {false,false,0} };
 
 // ═══════════════════════ Scale / I2C ════════════════════════════
 
@@ -161,6 +178,40 @@ void brakeAll() {
   }
 }
 
+// ═══════════════════════ Position Control ═══════════════════════
+
+void goToPos(int i, int32_t target) {
+  if (i < 0 || i > 2) return;
+  target = constrain(target, MOTOR_LIM_MIN[i], MOTOR_LIM_MAX[i]);
+  posCtrl[i].target  = target;
+  posCtrl[i].active  = true;
+  posCtrl[i].arrived = false;
+  Serial.printf("Motor %d → Ziel %ld\n", i + 1, (long)target);
+}
+
+void updatePositionControl() {
+  for (int i = 0; i < 3; i++) {
+    if (!posCtrl[i].active) continue;
+    int32_t err = posCtrl[i].target - enc[i].count;
+    if (abs(err) <= POS_TOLERANCE) {
+      setMotor(i, 0);
+      if (!posCtrl[i].arrived) {
+        posCtrl[i].arrived = true;
+        Serial.printf("Motor %d: Position erreicht (%ld), halte\n", i + 1, (long)enc[i].count);
+      }
+      continue;  // active bleibt true → hält Position dauerhaft
+    }
+    posCtrl[i].arrived = false;
+    // Trapezoidal profile: full speed → linear ramp-down in decel zone
+    int spd = (abs(err) >= DECEL_ZONE)
+      ? POS_MAX_SPD
+      : (int)map(abs(err), POS_TOLERANCE, DECEL_ZONE, POS_MIN_SPD, POS_MAX_SPD);
+    // Direction: err * posCtrlDir gives required sign of motor output
+    if ((err * (int32_t)posCtrlDir[i]) < 0) spd = -spd;
+    setMotor(i, spd);
+  }
+}
+
 // ═══════════════════════ Soft Limits + Endstop ══════════════════
 
 void checkLimits() {
@@ -201,6 +252,7 @@ void checkLimits() {
   // Lichtschranke Endstop
   if (endstopTriggered) {
     endstopTriggered = false;
+    posCtrl[MOTOR_LIFT].active = false; // Endstop = mechanisches Ende, nicht weiter
     setMotor(MOTOR_LIFT, 0);
     brakeAll();
     Serial.println("Lift: endstop!");
@@ -211,7 +263,7 @@ void checkLimits() {
 
 void pollScales() {
   static uint32_t tLast = 0;
-  if (millis() - tLast < 100) return;
+  if (millis() - tLast < 900) return;
   tLast = millis();
 
   tcaSelect(CH_LIFT);
@@ -233,7 +285,8 @@ void pollScales() {
 
 void printHelp() {
   Serial.println("Commands:");
-  Serial.println("  M <1-3> <-255..255>  Set motor (1=GripL 2=GripR 3=Lift)");
+  Serial.println("  M <1-3> <-255..255>  Set motor speed (1=GripL 2=GripR 3=Lift)");
+  Serial.println("  P <1-3> <counts>     Go to position (GripL/R: -5000..0, Lift: 0..20000)");
   Serial.println("  S  Stop (coast)      B  Brake all");
   Serial.println("  E  Show encoders     R  Reset encoders");
   Serial.println("  C  Stop + reset      T  Toggle telemetry");
@@ -262,19 +315,40 @@ void processCommand(String cmd) {
       int idx = cmd.substring(sp1 + 1, sp2).toInt();
       int spd = cmd.substring(sp2 + 1).toInt();
       if (idx < 1 || idx > 3) { Serial.println("Motor index must be 1..3"); return; }
+      posCtrl[idx - 1].active = false;
       setMotor(idx - 1, spd);
       Serial.printf("Motor %d -> %d\n", idx, spd);
       break;
     }
+    case 'P': {
+      int sp1 = cmd.indexOf(' ');
+      int sp2 = (sp1 < 0) ? -1 : cmd.indexOf(' ', sp1 + 1);
+      if (sp1 < 0 || sp2 < 0) { Serial.println("Usage: P <1-3> <counts>"); return; }
+      int idx = cmd.substring(sp1 + 1, sp2).toInt();
+      long target = cmd.substring(sp2 + 1).toInt();
+      if (idx < 1 || idx > 3) { Serial.println("Motor index must be 1..3"); return; }
+      goToPos(idx - 1, (int32_t)target);
+      break;
+    }
     case 'C':
+      for (int i = 0; i < 3; i++) posCtrl[i].active = false;
       stopAll();
       for (int i = 0; i < 3; i++) enc[i].count = 0;
       Serial.println("All stopped + encoders reset");
       break;
-    case 'S': stopAll();  Serial.println("Coast"); break;
-    case 'B': brakeAll(); Serial.println("Brake"); break;
+    case 'S':
+      for (int i = 0; i < 3; i++) posCtrl[i].active = false;
+      stopAll();
+      Serial.println("Coast");
+      break;
+    case 'B':
+      for (int i = 0; i < 3; i++) posCtrl[i].active = false;
+      brakeAll();
+      Serial.println("Brake");
+      break;
     case 'E': printEncoders(); break;
     case 'R':
+      for (int i = 0; i < 3; i++) posCtrl[i].active = false;
       for (int i = 0; i < 3; i++) enc[i].count = 0;
       Serial.println("Encoders reset");
       break;
@@ -358,6 +432,7 @@ void loop() {
   }
 
   checkLimits();
+  updatePositionControl();
   pollScales();
 
   if (telemetryOn) {

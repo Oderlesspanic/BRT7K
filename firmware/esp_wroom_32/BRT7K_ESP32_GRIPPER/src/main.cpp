@@ -12,6 +12,13 @@
 #include <rosidl_runtime_c/string_functions.h>
 #include "SparkFun_Qwiic_Scale_NAU7802_Arduino_Library.h"
 
+// Send data: data = motor * 100000 + target + 50000
+/*
+>>> def calcData(motor,data):
+...     return motor * 100000 + data + 50000
+...     
+
+*/
 /*
  * BRT7K — Gripper Controller (micro-ROS)
  * Platform : ESP32 WROOM-32 (Arduino Core 2.x)
@@ -36,6 +43,7 @@
  * ROS Topics:
  *   SUB  /esp32_gripper/command      std_msgs/Float32  (target gap in m)
  *   SUB  /esp32_gripper/manual       std_msgs/Int32    (0 stop, 1 open, 2 close, 3 lift up, 4 lift down)
+ *   SUB  /esp32_gripper/set_pos     std_msgs/Int32  (motor*100000 + target + 50000, motor: 1=GripL 2=GripR 3=Lift)
  *   PUB  /esp32_gripper/is_closed    std_msgs/Bool   (on change)
  *   PUB  /esp32_gripper/heartbeat    std_msgs/Empty  (2 Hz)
  *   PUB  /esp32_gripper/lift_weight  std_msgs/Int32  (10 Hz, tared)
@@ -85,10 +93,10 @@
 
 // ═══════════════════════ Encoder Limits ═════════════════════════
 
-#define GRIP_L_MIN  -5000
+#define GRIP_L_MIN  -6500
 #define GRIP_L_MAX      0
-#define GRIP_R_MIN  -5000
-#define GRIP_R_MAX      0
+#define GRIP_R_MIN      0
+#define GRIP_R_MAX   6500
 #define LIFT_MIN        0
 #define LIFT_MAX    20000
 
@@ -107,6 +115,25 @@ const int     GRIP_SPEED    = 150;
 const int     LIFT_SPEED    = 150;
 const int32_t POS_TOLERANCE = 100;
 
+// ═══════════════════════ Position Control Config ═════════════════
+
+const int32_t DECEL_ZONE    = 300;
+const int     POS_MAX_SPD   = 100;   // Normalgeschwindigkeit
+const int     POS_MIN_SPD   = 250;
+
+// Kraft-Erkennung → Geschwindigkeits-Boost
+// left_weight > +THRESHOLD oder right_weight < -THRESHOLD → Boost aktiv
+const int32_t FORCE_THRESHOLD = 50000;
+const int     FORCE_BOOST_SPD = 250;
+
+// GRIP_L: pos. Speed → Encoder sinkt → Dir -1; GRIP_R und LIFT: Dir +1
+const int8_t  posCtrlDir[3]    = { -1, 1, 1 };
+const int32_t MOTOR_LIM_MIN[3] = { GRIP_L_MIN, GRIP_R_MIN, LIFT_MIN };
+const int32_t MOTOR_LIM_MAX[3] = { GRIP_L_MAX, GRIP_R_MAX, LIFT_MAX };
+
+struct PosCtrl { bool active; bool arrived; int32_t target; };
+PosCtrl posCtrl[3] = { {false,false,0}, {false,false,0}, {false,false,0} };
+
 // ═══════════════════════ Scale / I2C ════════════════════════════
 
 #define TCAADDR 0x70
@@ -120,6 +147,7 @@ const uint8_t CH_LIFT   = 6;
 const uint8_t CH_GRIP_R = 5;
 
 int32_t scaleReadings[3] = { 0, 0, 0 }; // [LIFT, GRIP_L, GRIP_R]
+int32_t scaleOffsets[3]  = { 0, 0, 0 };
 bool tcaOk = false;
 bool liftScaleOk = false;
 bool leftScaleOk = false;
@@ -189,6 +217,7 @@ rcl_publisher_t    right_weight_pub;
 rcl_publisher_t    diagnostics_pub;
 rcl_subscription_t cmd_sub;
 rcl_subscription_t manual_sub;
+rcl_subscription_t set_pos_sub;
 
 std_msgs__msg__Bool                  is_closed_msg;
 std_msgs__msg__Empty                 heartbeat_msg;
@@ -198,6 +227,7 @@ std_msgs__msg__Int32                 right_weight_msg;
 std_msgs__msg__String                diagnostics_msg;
 std_msgs__msg__Float32               cmd_msg;
 std_msgs__msg__Int32                 manual_msg;
+std_msgs__msg__Int32                 set_pos_msg;
 
 enum class AgentState : uint8_t { WAITING, CONNECTED };
 AgentState urosState = AgentState::WAITING;
@@ -308,13 +338,31 @@ void pollScales() {
   if (!tcaOk) return;
 
   tcaSelect(CH_LIFT);
-  if (liftScaleOk && LiftingScale.available()) scaleReadings[0] = LiftingScale.getReading();
+  if (liftScaleOk  && LiftingScale.available())      scaleReadings[0] = LiftingScale.getReading()      - scaleOffsets[0];
 
   tcaSelect(CH_GRIP_L);
-  if (leftScaleOk && LeftGripperScale.available()) scaleReadings[1] = LeftGripperScale.getReading();
+  if (leftScaleOk  && LeftGripperScale.available())  scaleReadings[1] = LeftGripperScale.getReading()  - scaleOffsets[1];
 
   tcaSelect(CH_GRIP_R);
-  if (rightScaleOk && RightGripperScale.available()) scaleReadings[2] = RightGripperScale.getReading();
+  if (rightScaleOk && RightGripperScale.available()) scaleReadings[2] = RightGripperScale.getReading() - scaleOffsets[2];
+}
+
+void tareScales() {
+  if (!tcaOk) return;
+  int64_t sum[3]  = {0, 0, 0};
+  int     cnt[3]  = {0, 0, 0};
+  uint32_t start  = millis();
+  while (millis() - start < 2000) {
+    tcaSelect(CH_LIFT);
+    if (liftScaleOk  && LiftingScale.available())      { sum[0] += LiftingScale.getReading();      cnt[0]++; }
+    tcaSelect(CH_GRIP_L);
+    if (leftScaleOk  && LeftGripperScale.available())  { sum[1] += LeftGripperScale.getReading();  cnt[1]++; }
+    tcaSelect(CH_GRIP_R);
+    if (rightScaleOk && RightGripperScale.available()) { sum[2] += RightGripperScale.getReading(); cnt[2]++; }
+    delay(100);
+  }
+  for (int i = 0; i < 3; i++)
+    if (cnt[i] > 0) scaleOffsets[i] = (int32_t)(sum[i] / cnt[i]);
 }
 
 bool waitForTca() {
@@ -379,6 +427,47 @@ void driveGrippersTo(int32_t target) {
   setMotor(MOTOR_GRIP_R, abs(eR) > POS_TOLERANCE ? (eR > 0 ? -GRIP_SPEED : GRIP_SPEED) : 0);
 }
 
+// ═══════════════════════ Position Control ═══════════════════════
+
+void goToPos(int i, int32_t target) {
+  if (i < 0 || i > 2) return;
+  target = constrain(target, MOTOR_LIM_MIN[i], MOTOR_LIM_MAX[i]);
+  posCtrl[i] = { true, false, target };
+}
+
+// left_weight (scaleReadings[1]) steigt → >+THRESHOLD
+// right_weight (scaleReadings[2]) fällt → <-THRESHOLD
+bool forceDetected() {
+  return scaleReadings[1] >  FORCE_THRESHOLD
+      || scaleReadings[2] < -FORCE_THRESHOLD;
+}
+
+void updatePositionControl() {
+  bool boost = forceDetected();
+  for (int i = 0; i < 3; i++) {
+    if (!posCtrl[i].active) continue;
+    int32_t err = posCtrl[i].target - enc[i].count;
+    if (abs(err) <= POS_TOLERANCE) {
+      setMotor(i, 0);
+      if (!posCtrl[i].arrived) {
+        posCtrl[i].arrived = true;
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Motor %d Position %ld", i + 1, (long)enc[i].count);
+        setDiagnostics("INFO", msg);
+      }
+      continue;  // active bleibt true → hält Position
+    }
+    posCtrl[i].arrived = false;
+    int spd = boost
+      ? FORCE_BOOST_SPD
+      : ((abs(err) >= DECEL_ZONE)
+          ? POS_MAX_SPD
+          : (int)map(abs(err), POS_TOLERANCE, DECEL_ZONE, POS_MIN_SPD, POS_MAX_SPD));
+    if ((err * (int32_t)posCtrlDir[i]) < 0) spd = -spd;
+    setMotor(i, spd);
+  }
+}
+
 // ═══════════════════════ State Machine ══════════════════════════
 
 void updateStateMachine() {
@@ -439,6 +528,7 @@ void updateStateMachine() {
 void gripper_cmd_callback(const void* msgin) {
   const std_msgs__msg__Float32* msg =
     (const std_msgs__msg__Float32*)msgin;
+  for (int i = 0; i < 3; i++) posCtrl[i].active = false;
   manualLiftCommand = 0;
   targetPositionM = msg->data;
   newCommand      = true;
@@ -449,6 +539,7 @@ void manual_cmd_callback(const void* msgin) {
 
   switch (msg->data) {
     case 0:
+      for (int i = 0; i < 3; i++) posCtrl[i].active = false;
       manualLiftCommand = 0;
       newCommand = false;
       gripperState = GripperState::READY;
@@ -479,6 +570,26 @@ void manual_cmd_callback(const void* msgin) {
       setDiagnostics("WARN", "unbekannter manual command");
       break;
   }
+}
+
+// Encoding: motor * 100000 + target + 50000
+//   z.B.  Motor 1, Pos -6500 → 143500
+//         Motor 2, Pos  6500 → 256500
+//         Motor 3, Pos 20000 → 370000
+void set_pos_callback(const void* msgin) {
+  const std_msgs__msg__Int32* msg = (const std_msgs__msg__Int32*)msgin;
+  int32_t val       = msg->data;
+  int32_t motor_idx = val / 100000;
+  int32_t target    = (val % 100000) - 50000;
+  if (motor_idx < 1 || motor_idx > 3) {
+    setDiagnostics("WARN", "set_pos: Motor 1=GripL 2=GripR 3=Lift");
+    return;
+  }
+  manualLiftCommand = 0;
+  goToPos((int)(motor_idx - 1), target);
+  char info[56];
+  snprintf(info, sizeof(info), "posCtrl M%d→%ld", (int)motor_idx, (long)target);
+  setDiagnostics("INFO", info);
 }
 
 // ═══════════════════════ micro-ROS Lifecycle ════════════════════
@@ -537,13 +648,21 @@ void createEntities() {
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
     "/esp32_gripper/manual");
 
-  rclc_executor_init(&executor, &support.context, 2, &allocator);
-  rclc_executor_add_subscription(
-    &executor, &cmd_sub, &cmd_msg, &gripper_cmd_callback, ON_NEW_DATA);
-  rclc_executor_add_subscription(
-    &executor, &manual_sub, &manual_msg, &manual_cmd_callback, ON_NEW_DATA);
+  rclc_subscription_init_default(
+    &set_pos_sub, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "/esp32_gripper/set_pos");
 
-  is_closed_msg.data = false;
+  rclc_executor_init(&executor, &support.context, 3, &allocator);
+  rclc_executor_add_subscription(
+    &executor, &cmd_sub,    &cmd_msg,    &gripper_cmd_callback, ON_NEW_DATA);
+  rclc_executor_add_subscription(
+    &executor, &manual_sub, &manual_msg, &manual_cmd_callback,  ON_NEW_DATA);
+  rclc_executor_add_subscription(
+    &executor, &set_pos_sub, &set_pos_msg, &set_pos_callback,   ON_NEW_DATA);
+
+  is_closed_msg.data  = false;
+  set_pos_msg.data    = 0;
   std_msgs__msg__String__init(&diagnostics_msg);
   setDiagnostics("INFO", "micro-ROS verbunden, gripper heartbeat aktiv");
   publishDiagnostics();
@@ -559,8 +678,9 @@ void destroyEntities() {
   rcl_publisher_fini(&lift_weight_pub,  &node);
   rcl_publisher_fini(&left_weight_pub,  &node);
   rcl_publisher_fini(&right_weight_pub, &node);
-  rcl_subscription_fini(&cmd_sub, &node);
-  rcl_subscription_fini(&manual_sub, &node);
+  rcl_subscription_fini(&cmd_sub,     &node);
+  rcl_subscription_fini(&manual_sub,  &node);
+  rcl_subscription_fini(&set_pos_sub, &node);
   rclc_executor_fini(&executor);
   rcl_node_fini(&node);
   rclc_support_fini(&support);
@@ -609,10 +729,12 @@ void setup() {
   leftScaleOk = initScale(LeftGripperScale, CH_GRIP_L, "Links");
   rightScaleOk = initScale(RightGripperScale, CH_GRIP_R, "Rechts");
 
+  tareScales();
+
   if (!tcaOk || !liftScaleOk || !leftScaleOk || !rightScaleOk) {
     setDiagnostics("WARN", "Hardware unvollstaendig, micro-ROS startet fuer Diagnose und Heartbeat");
   } else {
-    setDiagnostics("INFO", "Gripper Hardware initialisiert");
+    setDiagnostics("INFO", "Gripper Hardware initialisiert, Waagen genullt");
   }
 }
 
@@ -650,12 +772,17 @@ void loop() {
 
       checkLimits();
       pollScales();
-      if (manualLiftCommand > 0) {
-        setMotor(MOTOR_LIFT, LIFT_SPEED);
-      } else if (manualLiftCommand < 0) {
-        setMotor(MOTOR_LIFT, -LIFT_SPEED);
-      } else {
-        updateStateMachine();
+      updatePositionControl();
+
+      bool anyPosCtrl = posCtrl[0].active || posCtrl[1].active || posCtrl[2].active;
+      if (!anyPosCtrl) {
+        if (manualLiftCommand > 0) {
+          setMotor(MOTOR_LIFT, LIFT_SPEED);
+        } else if (manualLiftCommand < 0) {
+          setMotor(MOTOR_LIFT, -LIFT_SPEED);
+        } else {
+          updateStateMachine();
+        }
       }
 
       // Heartbeat @ 2 Hz
