@@ -36,7 +36,7 @@
   <xacro:property name="laser_x" value="0.0"/> <!-- passt -->
   <xacro:property name="laser_y" value="0.0"/> <!-- passt -->
   <xacro:property name="laser_z" value="0.29"/> <!-- passt -->
-  <xacro:property name="laser_yaw" value="1.57079632679"/>
+  <xacro:property name="laser_yaw" value="-1.57079632679"/>
 
   <xacro:property name="imu_x" value="0.0"/>
   <xacro:property name="imu_y" value="0.0"/>
@@ -81,7 +81,7 @@
 
   
     <visual>
-      <origin xyz="-0.003435 -0.000615 0" rpy="0 0 1.57079632679" /> passt
+      <origin xyz="-0.003435 -0.000615 0" rpy="0 0 1.57079632679"/>
       <geometry>
         <mesh filename="package://robot_description/meshes/BRT7K.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -158,10 +158,10 @@
        Gripper Macro
   ========================== -->
 
-  <xacro:macro name="gripper" params="name x y z yaw mesh_file">
+  <xacro:macro name="gripper" params="name x y z yaw mesh_file visual_x visual_y visual_z">
   <link name="${name}">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="${visual_x} ${visual_y} ${visual_z}" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://robot_description/meshes/${mesh_file}"
               scale="0.001 0.001 0.001"/>
@@ -193,7 +193,10 @@
   y="${gripper_y}"
   z="${gripper_z}"
   yaw="${gripper_yaw}"
-  mesh_file="gripper_left.stl"/>
+  mesh_file="gripper_left.stl"
+  visual_x="0.106920"
+  visual_y="-0.165493"
+  visual_z="-0.031400"/>
 
 <xacro:gripper
   name="right_gripper_link"
@@ -201,7 +204,10 @@
   y="-${gripper_y}"
   z="${gripper_z}"
   yaw="-${gripper_yaw}"
-  mesh_file="gripper_right.stl"/>
+  mesh_file="gripper_right.stl"
+  visual_x="-0.106894"
+  visual_y="-0.165477"
+  visual_z="-0.019400"/>
 
   <!-- =========================
        LiDAR
