@@ -142,6 +142,14 @@ rcl_allocator_t allocator;
 rcl_node_t      node;
 
 static char s_diagnostics_text[180] = "INFO boot";
+static bool s_uros_entities_created = false;
+
+enum class AgentState {
+  WAITING,
+  CONNECTED,
+};
+
+static AgentState s_uros_state = AgentState::WAITING;
 
 static void setDiagnostics(const char * level, const char * text) {
   snprintf(s_diagnostics_text, sizeof(s_diagnostics_text), "%s %s", level, text);
@@ -153,8 +161,9 @@ static void publishDiagnostics() {
   (void)rc;
 }
 
-#define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){errorLoop();}}
-#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+#define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){setDiagnostics("ERROR", #fn); return false;}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; (void)temp_rc;}
+#define RCIGNORE(fn)    { rcl_ret_t temp_rc = fn; (void)temp_rc;}
 
 // ─────────────────────────────────────────────
 //  CRC-8 Dallas/Maxim  (poly 0x31, init 0x00)
@@ -247,6 +256,17 @@ static void updateMotorRamp() {
   motorSetSpeedRPM(Serial1, LEFT_ID, s_current_left_rpm);
   drainRx(Serial2);
   motorSetSpeedRPM(Serial2, RIGHT_ID, -s_current_right_rpm);  // right motor physically mirrored
+}
+
+static void stopDriveMotion() {
+  s_target_left_rpm = 0.0f;
+  s_target_right_rpm = 0.0f;
+  s_current_left_rpm = 0.0f;
+  s_current_right_rpm = 0.0f;
+  drainRx(Serial1);
+  motorSetSpeedRPM(Serial1, LEFT_ID, 0.0f);
+  drainRx(Serial2);
+  motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
 }
 
 static bool motorReadMileage(Stream &port, uint8_t id, int32_t &laps, uint16_t &position) {
@@ -378,14 +398,7 @@ void cmd_vel_cb(const void * msgin) {
   float ang = (float)msg->angular.z;  // rad/s
 
   if (fabsf(lin) < 0.001f && fabsf(ang) < 0.001f) {
-    s_target_left_rpm = 0.0f;
-    s_target_right_rpm = 0.0f;
-    s_current_left_rpm = 0.0f;
-    s_current_right_rpm = 0.0f;
-    drainRx(Serial1);
-    motorSetSpeedRPM(Serial1, LEFT_ID, 0.0f);
-    drainRx(Serial2);
-    motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
+    stopDriveMotion();
     setDiagnostics("INFO", "cmd_vel stop sofort ausgefuehrt");
     return;
   }
@@ -509,6 +522,85 @@ void timer_odom_cb(rcl_timer_t * t, int64_t last_call_time) {
 }
 
 // ─────────────────────────────────────────────
+//  micro-ROS lifecycle
+// ─────────────────────────────────────────────
+static bool createEntities() {
+  allocator = rcl_get_default_allocator();
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  rmw_uros_sync_session(1000);
+  RCCHECK(rclc_node_init_default(&node, "esp32_drive", "", &support));
+
+  // Publishers
+  RCCHECK(rclc_publisher_init_default(&pub_battery, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState),
+    "/battery_state"));
+  RCCHECK(rclc_publisher_init_default(&pub_heartbeat, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Empty),
+    "/esp32_drive/heartbeat"));
+  RCCHECK(rclc_publisher_init_default(&pub_tof, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+    "/tof_distance_cm"));
+  RCCHECK(rclc_publisher_init_default(&pub_wheel_odom, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
+    "/wheel/odometry"));
+  RCCHECK(rclc_publisher_init_default(&pub_diagnostics, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "/esp32_drive/diagnostics"));
+
+  // Subscriptions
+  RCCHECK(rclc_subscription_init_default(&sub_left_ring, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/gripper/left_ring_color"));
+  RCCHECK(rclc_subscription_init_default(&sub_right_ring, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/gripper/right_ring_color"));
+  RCCHECK(rclc_subscription_init_default(&sub_cmd_vel, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "/cmd_vel"));
+
+  // Timers
+  RCCHECK(rclc_timer_init_default(&timer_1hz,  &support, RCL_MS_TO_NS(1000), timer_1hz_cb));
+  RCCHECK(rclc_timer_init_default(&timer_10hz, &support, RCL_MS_TO_NS(100),  timer_10hz_cb));
+  RCCHECK(rclc_timer_init_default(&timer_odom, &support, RCL_MS_TO_NS(ODOM_PUBLISH_MS), timer_odom_cb));
+
+  // Executor: 3 timers + 3 subscriptions = 6 handles
+  RCCHECK(rclc_executor_init(&executor, &support.context, 6, &allocator));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer_1hz));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer_10hz));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer_odom));
+  RCCHECK(rclc_executor_add_subscription(&executor, &sub_left_ring,  &msg_sub_left,  &left_ring_cb,  ON_NEW_DATA));
+  RCCHECK(rclc_executor_add_subscription(&executor, &sub_right_ring, &msg_sub_right, &right_ring_cb, ON_NEW_DATA));
+  RCCHECK(rclc_executor_add_subscription(&executor, &sub_cmd_vel,    &msg_cmd_vel,   &cmd_vel_cb,    ON_NEW_DATA));
+
+  s_uros_entities_created = true;
+  digitalWrite(LED_GREEN, HIGH);
+  setDiagnostics("INFO", "micro-ROS verbunden, drive heartbeat und wheel odometry aktiv");
+  publishDiagnostics();
+  return true;
+}
+
+static void destroyEntities() {
+  if (!s_uros_entities_created) return;
+
+  rmw_context_t* rmw_ctx = rcl_context_get_rmw_context(&support.context);
+  (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_ctx, 0);
+
+  RCSOFTCHECK(rclc_executor_fini(&executor));
+  RCIGNORE(rcl_timer_fini(&timer_1hz));
+  RCIGNORE(rcl_timer_fini(&timer_10hz));
+  RCIGNORE(rcl_timer_fini(&timer_odom));
+  RCIGNORE(rcl_subscription_fini(&sub_left_ring, &node));
+  RCIGNORE(rcl_subscription_fini(&sub_right_ring, &node));
+  RCIGNORE(rcl_subscription_fini(&sub_cmd_vel, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_battery, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_heartbeat, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_tof, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_wheel_odom, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_diagnostics, &node));
+  RCIGNORE(rcl_node_fini(&node));
+  RCSOFTCHECK(rclc_support_fini(&support));
+
+  s_uros_entities_created = false;
+}
+
+// ─────────────────────────────────────────────
 //  Setup
 // ─────────────────────────────────────────────
 void setup() {
@@ -575,54 +667,8 @@ void setup() {
   msg_battery.present                 = true;
   initWheelOdomMessage();
 
-  // micro-ROS node
-  allocator = rcl_get_default_allocator();
-  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
-  rmw_uros_sync_session(1000);
-  RCCHECK(rclc_node_init_default(&node, "esp32_drive", "", &support));
-
-  // Publishers
-  RCCHECK(rclc_publisher_init_default(&pub_battery, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState),
-    "/battery_state"));
-  RCCHECK(rclc_publisher_init_default(&pub_heartbeat, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Empty),
-    "/esp32_drive/heartbeat"));
-  RCCHECK(rclc_publisher_init_default(&pub_tof, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-    "/tof_distance_cm"));
-  RCCHECK(rclc_publisher_init_default(&pub_wheel_odom, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
-    "/wheel/odometry"));
-  RCCHECK(rclc_publisher_init_default(&pub_diagnostics, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
-    "/esp32_drive/diagnostics"));
-
-  // Subscriptions
-  RCCHECK(rclc_subscription_init_default(&sub_left_ring, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/gripper/left_ring_color"));
-  RCCHECK(rclc_subscription_init_default(&sub_right_ring, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/gripper/right_ring_color"));
-  RCCHECK(rclc_subscription_init_default(&sub_cmd_vel, &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "/cmd_vel"));
-
-  // Timers
-  RCCHECK(rclc_timer_init_default(&timer_1hz,  &support, RCL_MS_TO_NS(1000), timer_1hz_cb));
-  RCCHECK(rclc_timer_init_default(&timer_10hz, &support, RCL_MS_TO_NS(100),  timer_10hz_cb));
-  RCCHECK(rclc_timer_init_default(&timer_odom, &support, RCL_MS_TO_NS(ODOM_PUBLISH_MS), timer_odom_cb));
-
-  // Executor: 3 timers + 3 subscriptions = 6 handles
-  RCCHECK(rclc_executor_init(&executor, &support.context, 6, &allocator));
-  RCCHECK(rclc_executor_add_timer(&executor, &timer_1hz));
-  RCCHECK(rclc_executor_add_timer(&executor, &timer_10hz));
-  RCCHECK(rclc_executor_add_timer(&executor, &timer_odom));
-  RCCHECK(rclc_executor_add_subscription(&executor, &sub_left_ring,  &msg_sub_left,  &left_ring_cb,  ON_NEW_DATA));
-  RCCHECK(rclc_executor_add_subscription(&executor, &sub_right_ring, &msg_sub_right, &right_ring_cb, ON_NEW_DATA));
-  RCCHECK(rclc_executor_add_subscription(&executor, &sub_cmd_vel,    &msg_cmd_vel,   &cmd_vel_cb,    ON_NEW_DATA));
-
-  digitalWrite(LED_GREEN, HIGH);
-  setDiagnostics("INFO", "micro-ROS verbunden, drive heartbeat und wheel odometry aktiv");
-  publishDiagnostics();
+  digitalWrite(LED_GREEN, LOW);
+  setDiagnostics("INFO", "Drive Hardware initialisiert, warte auf micro-ROS Agent");
 }
 
 // ─────────────────────────────────────────────
@@ -655,6 +701,43 @@ void loop() {
   }
 
   updateMotorRamp();
-  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1)));
+
+  switch (s_uros_state) {
+    case AgentState::WAITING: {
+      static uint32_t tRetry = 0;
+      if (millis() - tRetry >= 500) {
+        tRetry = millis();
+        if (RMW_RET_OK == rmw_uros_ping_agent(100, 1)) {
+          if (createEntities()) {
+            s_uros_state = AgentState::CONNECTED;
+          } else {
+            destroyEntities();
+            digitalWrite(LED_GREEN, LOW);
+            setDiagnostics("WARN", "micro-ROS init fehlgeschlagen, warte weiter");
+          }
+        }
+      }
+      break;
+    }
+
+    case AgentState::CONNECTED: {
+      static uint32_t tPing = 0;
+      if (millis() - tPing >= 1000) {
+        tPing = millis();
+        if (RMW_RET_OK != rmw_uros_ping_agent(50, 1)) {
+          destroyEntities();
+          stopDriveMotion();
+          digitalWrite(LED_GREEN, LOW);
+          setDiagnostics("WARN", "micro-ROS Agent verloren, Drive gestoppt");
+          s_uros_state = AgentState::WAITING;
+          break;
+        }
+      }
+
+      RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1)));
+      break;
+    }
+  }
+
   delay(5);
 }
