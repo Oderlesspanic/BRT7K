@@ -408,6 +408,8 @@ class TaskManagerNode(Node):
                 return self._start_slam_target()
             if target_name == "navigation_slam":
                 return self._start_navigation_slam_target()
+            if target_name == "frontier_explorer":
+                return self._start_frontier_explorer_target()
             return self._start_target(target_name)
         if action == "stop":
             return self._stop_target(target_name)
@@ -510,6 +512,8 @@ class TaskManagerNode(Node):
             start_success, start_message = self._start_slam_target()
         elif target_name == "navigation_slam":
             start_success, start_message = self._start_navigation_slam_target()
+        elif target_name == "frontier_explorer":
+            start_success, start_message = self._start_frontier_explorer_target()
         else:
             start_success, start_message = self._start_target(target_name)
         return start_success, f"{stop_message}\n{start_message}"
@@ -549,6 +553,36 @@ class TaskManagerNode(Node):
         )
 
         return True, "\n".join(messages)
+
+    def _start_frontier_explorer_target(self) -> Tuple[bool, str]:
+        managed = self._managed["frontier_explorer"]
+        if managed.is_running():
+            return True, "frontier_explorer laeuft bereits"
+
+        threading.Thread(
+            target=self._wait_for_nav_and_start_frontier,
+            daemon=True,
+        ).start()
+        return (
+            True,
+            "frontier_explorer wartet im Hintergrund auf /navigate_to_pose"
+        )
+
+    def _wait_for_nav_and_start_frontier(self) -> None:
+        success, message = self._wait_for_action_server(
+            "/navigate_to_pose",
+            timeout_sec=180.0,
+        )
+        if not success:
+            self.get_logger().warn(message)
+            return
+
+        self.get_logger().info(message)
+        success, message = self._start_target("frontier_explorer")
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().warn(message)
 
     def _activate_slam_sequence(self) -> None:
         success, message = self._activate_lifecycle_node(
