@@ -9,11 +9,38 @@ const mapStatus = document.getElementById("mapStatus");
 let mapBitmap = null;
 let mapWidth = 0;
 let mapHeight = 0;
+let mapResolution = 0;
+let mapOrigin = { x: 0, y: 0, yaw: 0 };
+let drawBounds = { x: 0, y: 0, scale: 1, width: 0, height: 0 };
+let robotPose = null;
+const transforms = new Map();
+const ROBOT_MESH_BOUNDS = {
+  minX: -0.3484,
+  minY: -0.2356,
+  maxX: 0.2277,
+  maxY: 0.2344
+};
+const robotImage = new Image();
+robotImage.src = "assets/robot_top.png?v=20260602-3";
+robotImage.addEventListener("load", resizeAndDraw);
 
 const mapTopic = new ROSLIB.Topic({
   ros: ros,
   name: "/map",
   messageType: "nav_msgs/OccupancyGrid"
+});
+
+const tfTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/tf",
+  messageType: "tf2_msgs/TFMessage",
+  throttle_rate: 100
+});
+
+const tfStaticTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/tf_static",
+  messageType: "tf2_msgs/TFMessage"
 });
 
 ros.on("connection", () => {
@@ -31,10 +58,19 @@ ros.on("error", () => {
 mapTopic.subscribe((msg) => {
   mapWidth = msg.info.width;
   mapHeight = msg.info.height;
+  mapResolution = msg.info.resolution;
+  mapOrigin = {
+    x: msg.info.origin.position.x,
+    y: msg.info.origin.position.y,
+    yaw: yawFromQuaternion(msg.info.origin.orientation)
+  };
   mapBitmap = buildMapImage(msg);
   mapStatus.textContent = `${mapWidth} x ${mapHeight}`;
   resizeAndDraw();
 });
+
+tfTopic.subscribe(updateTransforms);
+tfStaticTopic.subscribe(updateTransforms);
 
 window.addEventListener("resize", resizeAndDraw);
 
@@ -87,7 +123,111 @@ function resizeAndDraw() {
   const x = (window.innerWidth - drawWidth) * 0.5;
   const y = (window.innerHeight - drawHeight) * 0.5;
 
+  drawBounds = { x, y, scale, width: drawWidth, height: drawHeight };
   ctx.drawImage(mapBitmap, x, y, drawWidth, drawHeight);
+  drawRobot();
+}
+
+function updateTransforms(msg) {
+  for (const transform of msg.transforms || []) {
+    transforms.set(transformKey(transform.header.frame_id, transform.child_frame_id), transform);
+  }
+
+  robotPose = resolveRobotPose();
+  resizeAndDraw();
+}
+
+function resolveRobotPose() {
+  const direct = getTransform("map", "base_link") || getTransform("map", "base_footprint");
+  if (direct) return poseFromTransform(direct);
+
+  const mapToOdom = getTransform("map", "odom");
+  const odomToBase = getTransform("odom", "base_link") || getTransform("odom", "base_footprint");
+  if (!mapToOdom || !odomToBase) return robotPose;
+
+  return composePoses(poseFromTransform(mapToOdom), poseFromTransform(odomToBase));
+}
+
+function getTransform(parent, child) {
+  return transforms.get(transformKey(parent, child)) || null;
+}
+
+function transformKey(parent, child) {
+  return `${normalizeFrame(parent)}>${normalizeFrame(child)}`;
+}
+
+function normalizeFrame(frame) {
+  return String(frame || "").replace(/^\/+/, "");
+}
+
+function poseFromTransform(transform) {
+  return {
+    x: transform.transform.translation.x,
+    y: transform.transform.translation.y,
+    yaw: yawFromQuaternion(transform.transform.rotation)
+  };
+}
+
+function composePoses(a, b) {
+  const cos = Math.cos(a.yaw);
+  const sin = Math.sin(a.yaw);
+
+  return {
+    x: a.x + cos * b.x - sin * b.y,
+    y: a.y + sin * b.x + cos * b.y,
+    yaw: normalizeAngle(a.yaw + b.yaw)
+  };
+}
+
+function worldToCanvas(x, y) {
+  if (!mapResolution || mapWidth === 0 || mapHeight === 0) return null;
+
+  const dx = x - mapOrigin.x;
+  const dy = y - mapOrigin.y;
+  const cos = Math.cos(-mapOrigin.yaw);
+  const sin = Math.sin(-mapOrigin.yaw);
+  const mapX = (cos * dx - sin * dy) / mapResolution;
+  const mapY = (sin * dx + cos * dy) / mapResolution;
+
+  return {
+    x: drawBounds.x + mapX * drawBounds.scale,
+    y: drawBounds.y + (mapHeight - mapY) * drawBounds.scale
+  };
+}
+
+function drawRobot() {
+  if (!robotPose || !mapBitmap || mapResolution === 0) return;
+
+  const center = worldToCanvas(robotPose.x, robotPose.y);
+  if (!center) return;
+
+  const metersToCanvas = drawBounds.scale / mapResolution;
+  const imageX = ROBOT_MESH_BOUNDS.minX * metersToCanvas;
+  const imageY = -ROBOT_MESH_BOUNDS.maxY * metersToCanvas;
+  const imageWidth = (ROBOT_MESH_BOUNDS.maxX - ROBOT_MESH_BOUNDS.minX) * metersToCanvas;
+  const imageHeight = (ROBOT_MESH_BOUNDS.maxY - ROBOT_MESH_BOUNDS.minY) * metersToCanvas;
+  const yaw = -robotPose.yaw + mapOrigin.yaw;
+
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  ctx.rotate(yaw);
+
+  if (robotImage.complete && robotImage.naturalWidth > 0) {
+    ctx.drawImage(robotImage, imageX, imageY, imageWidth, imageHeight);
+  }
+
+  ctx.restore();
+}
+
+function yawFromQuaternion(q) {
+  if (!q) return 0;
+  const siny = 2 * (q.w * q.z + q.x * q.y);
+  const cosy = 1 - 2 * (q.y * q.y + q.z * q.z);
+  return Math.atan2(siny, cosy);
+}
+
+function normalizeAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
 resizeAndDraw();
