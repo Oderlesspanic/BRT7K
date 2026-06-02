@@ -231,8 +231,7 @@ fi
 echo "==> Installing robot autostart launcher"
 install -m 0755 "${REPO_ROOT}/raspberrypi_files/brt7k_assign_serial.py" \
   /usr/local/bin/brt7k_assign_serial.py
-install -m 0644 "${REPO_ROOT}/raspberrypi_files/brt7k_serial.rules" \
-  /etc/udev/rules.d/brt7k_serial.rules
+rm -f /etc/udev/rules.d/brt7k_serial.rules
 install -m 0644 "${REPO_ROOT}/raspberrypi_files/rplidar.rules" \
   /etc/udev/rules.d/rplidar.rules
 udevadm control --reload-rules
@@ -243,6 +242,11 @@ cat > /usr/local/bin/brt7k_robot_autostart.sh <<EOF
 set -eo pipefail
 
 source /opt/ros/${ROS_DISTRO}/setup.bash
+if [[ ! -f "${ROS_WS}/install/setup.bash" ]]; then
+  echo "Missing ROS workspace overlay: ${ROS_WS}/install/setup.bash" >&2
+  echo "Build the workspace before starting brt7k-robot.service." >&2
+  exit 1
+fi
 source "${ROS_WS}/install/setup.bash"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID_VALUE}"
 export BRT7K_MAP_DIR="${MAP_DIR}"
@@ -288,7 +292,7 @@ Before=brt7k-robot.service
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/udevadm settle --timeout=10
-ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive,gripper
+ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive
 RemainAfterExit=yes
 
 [Install]

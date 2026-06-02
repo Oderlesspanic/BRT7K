@@ -1,3 +1,0 @@
-# Stable CH341 links for the BRT7K ESP boards on the Raspberry Pi USB ports.
-KERNEL=="ttyUSB*", ENV{ID_VENDOR_ID}=="1a86", ENV{ID_MODEL_ID}=="7523", ENV{ID_PATH_TAG}=="platform-xhci-hcd_1-usb-0_2_1_0", MODE:="0660", GROUP:="dialout", SYMLINK+="esp_drive"
-KERNEL=="ttyUSB*", ENV{ID_VENDOR_ID}=="1a86", ENV{ID_MODEL_ID}=="7523", ENV{ID_PATH_TAG}=="platform-xhci-hcd_0-usb-0_2_1_0", MODE:="0660", GROUP:="dialout", SYMLINK+="esp_gripper"
