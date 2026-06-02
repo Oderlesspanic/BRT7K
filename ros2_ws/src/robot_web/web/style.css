@@ -39,7 +39,7 @@ h1 {
 
 .dashboard {
   display: grid;
-  grid-template-columns: 300px minmax(520px, 1fr) 420px;
+  grid-template-columns: 300px minmax(420px, 1fr) 420px;
   gap: 20px;
   align-items: start;
 }
@@ -317,7 +317,7 @@ hr {
   cursor: not-allowed;
 }
 
-.map-tile {
+.log-tile {
   min-width: 0;
 }
 
@@ -413,23 +413,13 @@ hr {
 
 @media (max-width: 1200px) {
   .dashboard {
-    grid-template-columns: 280px 1fr;
-  }
-
-  .map-tile {
-    grid-column: 2;
-    grid-row: 1;
+    grid-template-columns: 280px minmax(0, 1fr);
   }
 }
 
 @media (max-width: 900px) {
   .dashboard {
     grid-template-columns: 1fr;
-  }
-
-  .map-tile {
-    grid-column: auto;
-    grid-row: auto;
   }
 
   .log-entry {

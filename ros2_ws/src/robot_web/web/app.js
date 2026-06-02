@@ -20,53 +20,8 @@ ros.on("close", () => {
 });
 
 // ----------------------------------------------------
-// Map: /map nav_msgs/OccupancyGrid
-// ----------------------------------------------------
-
-const mapTopic = new ROSLIB.Topic({
-  ros: ros,
-  name: "/map",
-  messageType: "nav_msgs/OccupancyGrid"
-});
-
-const canvas = document.getElementById("mapCanvas");
-const ctx = canvas.getContext("2d");
-
-mapTopic.subscribe((msg) => {
-  const width = msg.info.width;
-  const height = msg.info.height;
-  const data = msg.data;
-
-  canvas.width = width;
-  canvas.height = height;
-
-  const imageData = ctx.createImageData(width, height);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const mapIndex = x + (height - y - 1) * width;
-      const imageIndex = (x + y * width) * 4;
-
-      const value = data[mapIndex];
-
-      let color;
-      if (value === -1) color = 180;
-      else if (value === 0) color = 255;
-      else color = 0;
-
-      imageData.data[imageIndex + 0] = color;
-      imageData.data[imageIndex + 1] = color;
-      imageData.data[imageIndex + 2] = color;
-      imageData.data[imageIndex + 3] = 255;
-    }
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-});
-
-// ----------------------------------------------------
 // ROS Logs: /rosout rcl_interfaces/Log
-// Shows WARN, ERROR and FATAL below the map.
+// Shows WARN, ERROR and FATAL in the dashboard.
 // ----------------------------------------------------
 
 const ROS_LOG_LEVELS = {
