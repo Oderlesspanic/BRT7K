@@ -456,16 +456,18 @@ class TaskManagerNode(Node):
             return True, f"{target_name} ist bereits beendet (Returncode {return_code})"
 
         pid = process.pid
+        sigint_timeout = 25.0 if target_name == "navigation_slam" else 8.0
+        sigterm_timeout = 10.0 if target_name == "navigation_slam" else 4.0
         try:
             os.killpg(pid, signal.SIGINT)
-            process.wait(timeout=8.0)
+            process.wait(timeout=sigint_timeout)
         except subprocess.TimeoutExpired:
             self.get_logger().warn(
                 f"{target_name} reagiert nicht auf SIGINT; sende SIGTERM"
             )
             try:
                 os.killpg(pid, signal.SIGTERM)
-                process.wait(timeout=4.0)
+                process.wait(timeout=sigterm_timeout)
             except subprocess.TimeoutExpired:
                 self.get_logger().error(
                     f"{target_name} reagiert nicht auf SIGTERM; sende SIGKILL"
@@ -502,6 +504,14 @@ class TaskManagerNode(Node):
         if not success:
             return False, "\n".join(messages)
 
+        lifecycle_success, lifecycle_message = self._activate_lifecycle_node(
+            "/slam_toolbox",
+            timeout_sec=60.0,
+        )
+        messages.append(lifecycle_message)
+        if not lifecycle_success:
+            return False, "\n".join(messages)
+
         tf_success, tf_message = self._wait_for_tf("map", "base_link", timeout_sec=90.0)
         messages.append(tf_message)
         if not tf_success:
@@ -528,6 +538,111 @@ class TaskManagerNode(Node):
                 return False, "\n".join(messages)
 
         return True, "\n".join(messages)
+
+    def _activate_lifecycle_node(
+        self,
+        node_name: str,
+        timeout_sec: float,
+    ) -> Tuple[bool, str]:
+        wait_success, wait_message = self._wait_for_lifecycle_state(
+            node_name,
+            {"unconfigured", "inactive", "active"},
+            timeout_sec=timeout_sec,
+        )
+        if not wait_success:
+            return False, wait_message
+
+        state = self._get_lifecycle_state(node_name)
+        if state == "active":
+            return True, f"{node_name} ist bereits active"
+
+        if state == "unconfigured":
+            success, message = self._set_lifecycle_transition(node_name, "configure")
+            if not success:
+                return False, message
+
+            wait_success, wait_message = self._wait_for_lifecycle_state(
+                node_name,
+                {"inactive", "active"},
+                timeout_sec=timeout_sec,
+            )
+            if not wait_success:
+                return False, wait_message
+
+            state = self._get_lifecycle_state(node_name)
+            if state == "active":
+                return True, f"{node_name} ist active"
+
+        success, message = self._set_lifecycle_transition(node_name, "activate")
+        if not success:
+            return False, message
+
+        wait_success, wait_message = self._wait_for_lifecycle_state(
+            node_name,
+            {"active"},
+            timeout_sec=timeout_sec,
+        )
+        if not wait_success:
+            return False, wait_message
+
+        return True, f"{node_name} ist active"
+
+    def _wait_for_lifecycle_state(
+        self,
+        node_name: str,
+        desired_states: set[str],
+        timeout_sec: float,
+    ) -> Tuple[bool, str]:
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            state = self._get_lifecycle_state(node_name)
+            if state in desired_states:
+                desired = ", ".join(sorted(desired_states))
+                return True, f"{node_name} Lifecycle-State ist {state} (erwartet: {desired})"
+            time.sleep(1.0)
+
+        desired = ", ".join(sorted(desired_states))
+        return False, f"Timeout beim Warten auf {node_name} Lifecycle-State: {desired}"
+
+    def _get_lifecycle_state(self, node_name: str) -> Optional[str]:
+        try:
+            result = subprocess.run(
+                ["ros2", "lifecycle", "get", node_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=3.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+
+        if result.returncode != 0:
+            return None
+
+        output = (result.stdout or "").strip().lower()
+        if not output:
+            return None
+
+        return output.split()[0]
+
+    def _set_lifecycle_transition(
+        self,
+        node_name: str,
+        transition: str,
+    ) -> Tuple[bool, str]:
+        result = subprocess.run(
+            ["ros2", "lifecycle", "set", node_name, transition],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=15.0,
+            check=False,
+        )
+        output = (result.stdout or "").strip()
+        if result.returncode != 0:
+            return False, f"{node_name} lifecycle {transition} fehlgeschlagen: {output}"
+        return True, f"{node_name} lifecycle {transition}: {output}"
 
     def _wait_for_tf(
         self,
