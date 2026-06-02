@@ -67,7 +67,7 @@ def generate_launch_description():
             executable="behavior_server",
             output="screen",
             parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
+            remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
         ),
         Node(
             package="nav2_bt_navigator",
@@ -88,7 +88,7 @@ def generate_launch_description():
             executable="velocity_smoother",
             output="screen",
             parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
+            remappings=remappings,
         ),
         Node(
             package="nav2_collision_monitor",
