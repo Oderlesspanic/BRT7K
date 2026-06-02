@@ -21,7 +21,7 @@ def generate_launch_description():
                 "serial_baudrate": "460800",
                 "frame_id": "laser_link",
                 "scan_mode": "",
-                "scan_frequency": "5.0"
+                "scan_frequency": "5"
             }.items()
         ),
     ])
