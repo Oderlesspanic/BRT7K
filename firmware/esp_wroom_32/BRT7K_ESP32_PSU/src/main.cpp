@@ -65,8 +65,8 @@
 // ─────────────────────────────────────────────
 //  Robot kinematics (adjust to your platform)
 // ─────────────────────────────────────────────
-#define WHEEL_RADIUS_M   0.05f   // m
-#define WHEEL_BASE_M     0.30f   // m  (distance between wheels)
+#define WHEEL_RADIUS_M   0.03656f  // m, matches robot_description wheel_radius
+#define WHEEL_BASE_M     0.3212f   // m, matches robot_description 2 * wheel_y
 #define ENCODER_STEPS_PER_REV 32768.0f
 #define ODOM_PUBLISH_MS 100
 
