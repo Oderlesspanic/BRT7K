@@ -51,7 +51,7 @@
 // ─────────────────────────────────────────────
 //  Board role announcement (for auto-detecting which board is which in multi-board setups)
 // ─────────────────────────────────────────────
-#define BRT7K_ROLE "BRT7K_ROLE=gripper"
+#define BRT7K_ROLE "gripper"
 
 // ═══════════════════════ Pin Definitions ════════════════════════
 
@@ -487,7 +487,9 @@ void announceBoardRole() {
   Serial.begin(115200);
 
   for (int i = 0; i < 20; i++) {
+    Serial.print("BRT7K_ROLE=");
     Serial.println(BRT7K_ROLE);
+    Serial.flush();
     delay(250);
   }
 }

@@ -169,6 +169,19 @@ def replace_symlink(link: str, target: str, dry_run: bool) -> None:
     os.symlink(target, link)
 
 
+def existing_role_link(role: str) -> str | None:
+    link = Path(ROLE_LINKS[role])
+    if not link.exists() and not link.is_symlink():
+        return None
+
+    try:
+        target = link.resolve(strict=True)
+    except OSError:
+        return None
+
+    return str(target)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Scan /dev/ttyUSB* and create /dev/esp_* links from ESP32 boot banners."
@@ -220,6 +233,18 @@ def main() -> int:
 
         found[role] = device
         replace_symlink(ROLE_LINKS[role], device, args.dry_run)
+
+    for role in ROLE_LINKS:
+        if role in found:
+            continue
+
+        existing = existing_role_link(role)
+        if existing is None:
+            continue
+
+        if args.verbose:
+            print(f"use existing {ROLE_LINKS[role]} -> {existing}", file=sys.stderr)
+        found[role] = existing
 
     required = {role.strip() for role in args.require.split(",") if role.strip()}
     unknown_required = sorted(required - set(ROLE_LINKS))
