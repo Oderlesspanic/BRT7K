@@ -20,8 +20,9 @@ const ROBOT_MESH_BOUNDS = {
   maxX: 0.2277,
   maxY: 0.2344
 };
+const ROBOT_MESH_YAW_OFFSET = Math.PI / 2;
 const robotImage = new Image();
-robotImage.src = "assets/robot_top.png?v=20260602-3";
+robotImage.src = "assets/robot_top.png?v=20260602-4";
 robotImage.addEventListener("load", resizeAndDraw);
 
 const mapTopic = new ROSLIB.Topic({
@@ -206,7 +207,7 @@ function drawRobot() {
   const imageY = -ROBOT_MESH_BOUNDS.maxY * metersToCanvas;
   const imageWidth = (ROBOT_MESH_BOUNDS.maxX - ROBOT_MESH_BOUNDS.minX) * metersToCanvas;
   const imageHeight = (ROBOT_MESH_BOUNDS.maxY - ROBOT_MESH_BOUNDS.minY) * metersToCanvas;
-  const yaw = -robotPose.yaw + mapOrigin.yaw;
+  const yaw = -robotPose.yaw + mapOrigin.yaw + ROBOT_MESH_YAW_OFFSET;
 
   ctx.save();
   ctx.translate(center.x, center.y);
