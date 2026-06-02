@@ -20,7 +20,7 @@ const ROBOT_MESH_BOUNDS = {
   maxX: 0.2277,
   maxY: 0.2344
 };
-const ROBOT_MESH_YAW_OFFSET = -Math.PI / 2;
+const ROBOT_MESH_YAW_OFFSET = -Math.PI;
 const MAP_VIEW_YAW = Math.PI / 2;
 const robotImage = new Image();
 robotImage.src = "assets/robot_top.png?v=20260602-5";
