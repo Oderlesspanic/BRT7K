@@ -109,13 +109,15 @@ class ManagedLaunch:
 class TaskManagerNode(Node):
     NAVIGATION_SLAM_LIFECYCLE_NODES = (
         "/controller_server",
-        "/smoother_server",
+        "/local_costmap/local_costmap",
         "/planner_server",
+        "/global_costmap/global_costmap",
+        "/smoother_server",
+        "/velocity_smoother",
+        "/collision_monitor",
         "/behavior_server",
         "/bt_navigator",
         "/waypoint_follower",
-        "/velocity_smoother",
-        "/collision_monitor",
     )
 
     def __init__(self) -> None:

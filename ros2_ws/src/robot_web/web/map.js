@@ -21,6 +21,7 @@ const ROBOT_MESH_BOUNDS = {
   maxY: 0.2344
 };
 const ROBOT_MESH_YAW_OFFSET = -Math.PI / 2;
+const MAP_VIEW_YAW = Math.PI / 2;
 const robotImage = new Image();
 robotImage.src = "assets/robot_top.png?v=20260602-5";
 robotImage.addEventListener("load", resizeAndDraw);
@@ -118,14 +119,26 @@ function resizeAndDraw() {
 
   if (!mapBitmap || mapWidth === 0 || mapHeight === 0) return;
 
-  const scale = Math.min(window.innerWidth / mapWidth, window.innerHeight / mapHeight);
-  const drawWidth = mapWidth * scale;
-  const drawHeight = mapHeight * scale;
+  const viewWidth = mapHeight;
+  const viewHeight = mapWidth;
+  const scale = Math.min(window.innerWidth / viewWidth, window.innerHeight / viewHeight);
+  const drawWidth = viewWidth * scale;
+  const drawHeight = viewHeight * scale;
   const x = (window.innerWidth - drawWidth) * 0.5;
   const y = (window.innerHeight - drawHeight) * 0.5;
 
   drawBounds = { x, y, scale, width: drawWidth, height: drawHeight };
-  ctx.drawImage(mapBitmap, x, y, drawWidth, drawHeight);
+  ctx.save();
+  ctx.translate(x + drawWidth * 0.5, y + drawHeight * 0.5);
+  ctx.rotate(MAP_VIEW_YAW);
+  ctx.drawImage(
+    mapBitmap,
+    -mapWidth * scale * 0.5,
+    -mapHeight * scale * 0.5,
+    mapWidth * scale,
+    mapHeight * scale
+  );
+  ctx.restore();
   drawRobot();
 }
 
@@ -190,9 +203,16 @@ function worldToCanvas(x, y) {
   const mapX = (cos * dx - sin * dy) / mapResolution;
   const mapY = (sin * dx + cos * dy) / mapResolution;
 
+  const localX = mapX * drawBounds.scale;
+  const localY = (mapHeight - mapY) * drawBounds.scale;
+  const unrotatedCenterX = mapWidth * drawBounds.scale * 0.5;
+  const unrotatedCenterY = mapHeight * drawBounds.scale * 0.5;
+  const rotatedX = drawBounds.width * 0.5 - (localY - unrotatedCenterY);
+  const rotatedY = drawBounds.height * 0.5 + (localX - unrotatedCenterX);
+
   return {
-    x: drawBounds.x + mapX * drawBounds.scale,
-    y: drawBounds.y + (mapHeight - mapY) * drawBounds.scale
+    x: drawBounds.x + rotatedX,
+    y: drawBounds.y + rotatedY
   };
 }
 
@@ -207,7 +227,7 @@ function drawRobot() {
   const imageY = -ROBOT_MESH_BOUNDS.maxY * metersToCanvas;
   const imageWidth = (ROBOT_MESH_BOUNDS.maxX - ROBOT_MESH_BOUNDS.minX) * metersToCanvas;
   const imageHeight = (ROBOT_MESH_BOUNDS.maxY - ROBOT_MESH_BOUNDS.minY) * metersToCanvas;
-  const yaw = -robotPose.yaw + mapOrigin.yaw + ROBOT_MESH_YAW_OFFSET;
+  const yaw = -robotPose.yaw + mapOrigin.yaw + ROBOT_MESH_YAW_OFFSET + MAP_VIEW_YAW;
 
   ctx.save();
   ctx.translate(center.x, center.y);
