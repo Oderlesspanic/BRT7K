@@ -14,9 +14,6 @@ def generate_launch_description():
     lifecycle_nodes = [
         "smoother_server",
         "planner_server",
-        "behavior_server",
-        "bt_navigator",
-        "waypoint_follower",
     ]
 
     declare_params_file = DeclareLaunchArgument(
@@ -48,27 +45,6 @@ def generate_launch_description():
         Node(
             package="nav2_planner",
             executable="planner_server",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
-        ),
-        Node(
-            package="nav2_behaviors",
-            executable="behavior_server",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
-        ),
-        Node(
-            package="nav2_bt_navigator",
-            executable="bt_navigator",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
-        ),
-        Node(
-            package="nav2_waypoint_follower",
-            executable="waypoint_follower",
             output="screen",
             parameters=[params_file, {"use_sim_time": use_sim_time}],
             remappings=remappings,
