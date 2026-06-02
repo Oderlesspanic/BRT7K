@@ -5,7 +5,7 @@
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
-#include <std_msgs/msg/float32.h>
+#include <sensor_msgs/msg/battery_state.h>
 
 #define RCCHECK(fn) { rcl_ret_t rc = fn; if (rc != RCL_RET_OK) { errorLoop(); } }
 #define RCSOFTCHECK(fn) { rcl_ret_t rc = fn; (void)rc; }
@@ -22,13 +22,9 @@ rclc_support_t support;
 rcl_node_t node;
 rclc_executor_t executor;
 rcl_timer_t publish_timer;
-rcl_publisher_t current_pub;
-rcl_publisher_t voltage_pub;
-rcl_publisher_t power_pub;
+rcl_publisher_t battery_pub;
 
-std_msgs__msg__Float32 current_msg;
-std_msgs__msg__Float32 voltage_msg;
-std_msgs__msg__Float32 power_msg;
+sensor_msgs__msg__BatteryState battery_msg;
 
 static void errorLoop() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -44,13 +40,11 @@ static void publishIna260(rcl_timer_t * timer, int64_t last_call_time) {
   (void)timer;
   (void)last_call_time;
 
-  current_msg.data = ina260.readCurrent();
-  voltage_msg.data = ina260.readBusVoltage();
-  power_msg.data = ina260.readPower();
+  // INA260 returns mA and mV — convert to A and V for BatteryState
+  battery_msg.current = ina260.readCurrent()    / 1000.0f;  // mA → A
+  battery_msg.voltage = ina260.readBusVoltage() / 1000.0f;  // mV → V
 
-  RCSOFTCHECK(rcl_publish(&current_pub, &current_msg, NULL));
-  RCSOFTCHECK(rcl_publish(&voltage_pub, &voltage_msg, NULL));
-  RCSOFTCHECK(rcl_publish(&power_pub, &power_msg, NULL));
+  RCSOFTCHECK(rcl_publish(&battery_pub, &battery_msg, NULL));
 }
 
 void setup() {
@@ -66,28 +60,27 @@ void setup() {
     errorLoop();
   }
 
+  sensor_msgs__msg__BatteryState__init(&battery_msg);
+  battery_msg.temperature             = NAN;
+  battery_msg.charge                  = NAN;
+  battery_msg.capacity                = NAN;
+  battery_msg.design_capacity         = NAN;
+  battery_msg.percentage              = NAN;
+  battery_msg.power_supply_status     = 0;  // UNKNOWN
+  battery_msg.power_supply_health     = 0;  // UNKNOWN
+  battery_msg.power_supply_technology = 0;  // UNKNOWN
+  battery_msg.present                 = true;
+
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
   rmw_uros_sync_session(1000);
   RCCHECK(rclc_node_init_default(&node, "ina260_test_node", "", &support));
 
   RCCHECK(rclc_publisher_init_default(
-    &current_pub,
+    &battery_pub,
     &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-    "/ina260/current_ma"));
-
-  RCCHECK(rclc_publisher_init_default(
-    &voltage_pub,
-    &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-    "/ina260/bus_voltage_mv"));
-
-  RCCHECK(rclc_publisher_init_default(
-    &power_pub,
-    &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-    "/ina260/power_mw"));
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState),
+    "/battery_state"));
 
   RCCHECK(rclc_timer_init_default(
     &publish_timer,
