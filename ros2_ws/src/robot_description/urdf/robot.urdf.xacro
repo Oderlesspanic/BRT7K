@@ -36,7 +36,7 @@
   <xacro:property name="laser_x" value="0.0"/> <!-- passt -->
   <xacro:property name="laser_y" value="0.0"/> <!-- passt -->
   <xacro:property name="laser_z" value="0.29"/> <!-- passt -->
-  <xacro:property name="laser_yaw" value="1.57079632679"/>
+  <xacro:property name="laser_yaw" value="-1.57079632679"/>
 
   <xacro:property name="imu_x" value="0.0"/>
   <xacro:property name="imu_y" value="0.0"/>
