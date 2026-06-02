@@ -80,6 +80,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformListener
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,8 @@ class TaskManagerNode(Node):
         self._start_all_target_names = self._load_start_all_targets()
         self._log_dir = self._load_log_dir()
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=True)
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._command_sub = self.create_subscription(
@@ -649,25 +652,14 @@ class TaskManagerNode(Node):
     ) -> Tuple[bool, str]:
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
-            try:
-                result = subprocess.run(
-                    ["ros2", "run", "tf2_ros", "tf2_echo", target_frame, source_frame],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=2.0,
-                    check=False,
-                )
-                output = result.stdout or ""
-            except subprocess.TimeoutExpired as exc:
-                output = ""
-                if exc.stdout:
-                    output = exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode()
-
-            if "Translation:" in output and "Rotation:" in output:
+            if self._tf_buffer.can_transform(
+                target_frame,
+                source_frame,
+                rclpy.time.Time(),
+            ):
                 return True, f"TF {target_frame}->{source_frame} ist verfuegbar"
 
-            time.sleep(1.0)
+            time.sleep(0.25)
 
         return (
             False,
