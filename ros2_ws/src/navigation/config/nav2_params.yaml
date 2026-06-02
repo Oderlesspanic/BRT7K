@@ -25,16 +25,31 @@ controller_server:
     controller_frequency: 20.0
 
     controller_plugins: ["FollowPath"]
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    current_progress_checker: "progress_checker"
+    current_goal_checker: "goal_checker"
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.10
+      movement_time_allowance: 20.0
+
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.35
+      stateful: true
 
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.18
-      max_linear_accel: 0.5
-      max_angular_accel: 1.0
-      lookahead_dist: 0.35
-      min_lookahead_dist: 0.20
-      max_lookahead_dist: 0.60
-      rotate_to_heading_angular_vel: 0.6
+      desired_linear_vel: 0.08
+      max_linear_accel: 0.25
+      max_angular_accel: 0.5
+      lookahead_dist: 0.25
+      min_lookahead_dist: 0.15
+      max_lookahead_dist: 0.40
+      rotate_to_heading_angular_vel: 0.25
       transform_tolerance: 0.2
 
 planner_server:
@@ -80,10 +95,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.25, 0.0, 1.0]
-    min_velocity: [-0.10, 0.0, -1.0]
-    max_accel: [0.5, 0.0, 1.2]
-    max_decel: [-0.5, 0.0, -1.2]
+    max_velocity: [0.10, 0.0, 0.35]
+    min_velocity: [-0.04, 0.0, -0.35]
+    max_accel: [0.25, 0.0, 0.5]
+    max_decel: [-0.25, 0.0, -0.5]
     cmd_vel_in_topic: "/cmd_vel_nav"
     cmd_vel_out_topic: "/cmd_vel_smoothed"
     odom_topic: "/odom"
@@ -106,7 +121,7 @@ collision_monitor:
     polygons: ["StopZone"]
     StopZone:
       type: "circle"
-      radius: 0.24
+      radius: 0.32
       action_type: "stop"
       min_points: 4
       visualize: true
