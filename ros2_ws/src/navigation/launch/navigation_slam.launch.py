@@ -77,7 +77,10 @@ def generate_launch_description():
             executable="velocity_smoother",
             output="screen",
             parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
+            remappings=remappings + [
+                ("cmd_vel", "cmd_vel_nav"),
+                ("cmd_vel_smoothed", "cmd_vel_smoothed"),
+            ],
         ),
         Node(
             package="nav2_collision_monitor",
