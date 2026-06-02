@@ -113,7 +113,6 @@ class TaskManagerNode(Node):
         "/controller_server",
         "/planner_server",
         "/smoother_server",
-        "/velocity_smoother",
         "/collision_monitor",
         "/behavior_server",
         "/bt_navigator",
