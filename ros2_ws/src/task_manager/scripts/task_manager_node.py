@@ -624,14 +624,18 @@ class TaskManagerNode(Node):
         node_name: str,
         transition: str,
     ) -> Tuple[bool, str]:
-        result = subprocess.run(
-            ["ros2", "lifecycle", "set", node_name, transition],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=15.0,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["ros2", "lifecycle", "set", node_name, transition],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=45.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return True, f"{node_name} lifecycle {transition}: wartet noch"
+
         output = (result.stdout or "").strip()
         if result.returncode != 0:
             return False, f"{node_name} lifecycle {transition} fehlgeschlagen: {output}"
