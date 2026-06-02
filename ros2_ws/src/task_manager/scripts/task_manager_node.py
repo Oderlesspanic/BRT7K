@@ -506,13 +506,13 @@ class TaskManagerNode(Node):
 
         lifecycle_success, lifecycle_message = self._activate_lifecycle_node(
             "/slam_toolbox",
-            timeout_sec=60.0,
+            timeout_sec=180.0,
         )
         messages.append(lifecycle_message)
         if not lifecycle_success:
             return False, "\n".join(messages)
 
-        tf_success, tf_message = self._wait_for_tf("map", "base_link", timeout_sec=90.0)
+        tf_success, tf_message = self._wait_for_tf("map", "base_link", timeout_sec=180.0)
         messages.append(tf_message)
         if not tf_success:
             return False, "\n".join(messages)
@@ -525,7 +525,7 @@ class TaskManagerNode(Node):
 
             action_success, action_message = self._wait_for_action_server(
                 "/navigate_to_pose",
-                timeout_sec=90.0,
+                timeout_sec=120.0,
             )
             messages.append(action_message)
             if not action_success:
