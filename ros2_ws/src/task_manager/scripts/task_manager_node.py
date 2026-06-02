@@ -107,6 +107,17 @@ class ManagedLaunch:
 
 
 class TaskManagerNode(Node):
+    NAVIGATION_SLAM_LIFECYCLE_NODES = (
+        "/controller_server",
+        "/smoother_server",
+        "/planner_server",
+        "/behavior_server",
+        "/bt_navigator",
+        "/waypoint_follower",
+        "/velocity_smoother",
+        "/collision_monitor",
+    )
+
     def __init__(self) -> None:
         super().__init__("task_manager")
 
@@ -508,13 +519,14 @@ class TaskManagerNode(Node):
         if not success:
             return False, "\n".join(messages)
 
-        lifecycle_success, lifecycle_message = self._activate_lifecycle_node(
-            "/slam_toolbox",
-            timeout_sec=180.0,
+        threading.Thread(
+            target=self._activate_slam_sequence,
+            daemon=True,
+        ).start()
+        messages.append(
+            "slam_toolbox Aktivierung laeuft im Hintergrund; "
+            "Status mit 'ros2 lifecycle get /slam_toolbox' pruefen"
         )
-        messages.append(lifecycle_message)
-        if not lifecycle_success:
-            return False, "\n".join(messages)
 
         return True, "\n".join(messages)
 
@@ -525,12 +537,51 @@ class TaskManagerNode(Node):
         if not success:
             return False, "\n".join(messages)
 
+        threading.Thread(
+            target=self._activate_navigation_slam_sequence,
+            daemon=True,
+        ).start()
         messages.append(
-            "navigation_slam startet im Hintergrund; "
-            "Status ueber /navigate_to_pose oder Log pruefen"
+            "navigation_slam Aktivierung laeuft im Hintergrund; "
+            "Status ueber /navigate_to_pose oder Lifecycle-Nodes pruefen"
         )
 
         return True, "\n".join(messages)
+
+    def _activate_slam_sequence(self) -> None:
+        success, message = self._activate_lifecycle_node(
+            "/slam_toolbox",
+            timeout_sec=180.0,
+        )
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+
+    def _activate_navigation_slam_sequence(self) -> None:
+        for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES:
+            success, message = self._activate_lifecycle_node(
+                node_name,
+                timeout_sec=90.0,
+            )
+            if success:
+                self.get_logger().info(message)
+                continue
+
+            self.get_logger().error(message)
+            self.get_logger().error(
+                f"navigation_slam Aktivierung abgebrochen bei {node_name}"
+            )
+            return
+
+        success, message = self._wait_for_action_server(
+            "/navigate_to_pose",
+            timeout_sec=30.0,
+        )
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().warn(message)
 
     def _start_mapping_with_prerequisites(self) -> Tuple[bool, str]:
         messages = []
@@ -547,38 +598,14 @@ class TaskManagerNode(Node):
         if not success:
             return False, "\n".join(messages)
 
-        lifecycle_success, lifecycle_message = self._activate_lifecycle_node(
-            "/slam_toolbox",
-            timeout_sec=180.0,
+        threading.Thread(
+            target=self._activate_slam_sequence,
+            daemon=True,
+        ).start()
+        messages.append(
+            "slam_toolbox Aktivierung laeuft im Hintergrund; "
+            "navigation_slam/frontier_explorer bitte separat starten"
         )
-        messages.append(lifecycle_message)
-        if not lifecycle_success:
-            return False, "\n".join(messages)
-
-        tf_success, tf_message = self._wait_for_tf("map", "base_link", timeout_sec=180.0)
-        messages.append(tf_message)
-        if not tf_success:
-            return False, "\n".join(messages)
-
-        if "navigation_slam" in self._managed:
-            success, message = self._start_target("navigation_slam")
-            messages.append(message)
-            if not success:
-                return False, "\n".join(messages)
-
-            action_success, action_message = self._wait_for_action_server(
-                "/navigate_to_pose",
-                timeout_sec=120.0,
-            )
-            messages.append(action_message)
-            if not action_success:
-                return False, "\n".join(messages)
-
-        if "frontier_explorer" in self._managed:
-            success, message = self._start_target("frontier_explorer")
-            messages.append(message)
-            if not success:
-                return False, "\n".join(messages)
 
         return True, "\n".join(messages)
 
