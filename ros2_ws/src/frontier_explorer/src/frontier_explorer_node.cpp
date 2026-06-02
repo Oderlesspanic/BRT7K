@@ -11,6 +11,7 @@ FrontierExplorerNode::FrontierExplorerNode()
   map_received_(false),
   goal_active_(false),
   finish_requested_(false),
+  next_goal_allowed_time_(0, 0, RCL_ROS_TIME),
   no_frontier_count_(0)
 {
     loadParameters();
@@ -81,6 +82,11 @@ void FrontierExplorerNode::loadParameters()
         8
     );
 
+    this->declare_parameter<double>(
+        "retry_delay_after_abort",
+        8.0
+    );
+
     this->declare_parameter<bool>(
         "auto_finish_enabled",
         true
@@ -123,6 +129,9 @@ void FrontierExplorerNode::loadParameters()
 
     min_frontier_cluster_size_ =
         this->get_parameter("min_frontier_cluster_size").as_int();
+
+    retry_delay_after_abort_ =
+        this->get_parameter("retry_delay_after_abort").as_double();
 
     auto_finish_enabled_ =
         this->get_parameter("auto_finish_enabled").as_bool();
@@ -173,6 +182,11 @@ void FrontierExplorerNode::timerCallback()
     }
 
     if (goal_active_)
+    {
+        return;
+    }
+
+    if (this->now() < next_goal_allowed_time_)
     {
         return;
     }
@@ -266,6 +280,7 @@ void FrontierExplorerNode::sendGoal(
 
     NavigateToPose::Goal nav_goal;
     nav_goal.pose = goal;
+    goal_active_ = true;
 
     auto options =
         rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
@@ -311,6 +326,9 @@ void FrontierExplorerNode::sendGoal(
                         this->get_logger(),
                         "Goal abgebrochen"
                     );
+                    next_goal_allowed_time_ =
+                        this->now() +
+                        rclcpp::Duration::from_seconds(retry_delay_after_abort_);
                     break;
 
                 case rclcpp_action::ResultCode::CANCELED:
@@ -318,6 +336,9 @@ void FrontierExplorerNode::sendGoal(
                         this->get_logger(),
                         "Goal abgebrochen/canceled"
                     );
+                    next_goal_allowed_time_ =
+                        this->now() +
+                        rclcpp::Duration::from_seconds(retry_delay_after_abort_);
                     break;
 
                 default:

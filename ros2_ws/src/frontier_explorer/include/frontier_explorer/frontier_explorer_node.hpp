@@ -31,6 +31,7 @@ private:
     bool map_received_;
     bool goal_active_;
     bool finish_requested_;
+    rclcpp::Time next_goal_allowed_time_;
     std::optional<rclcpp::Time> coverage_threshold_since_;
 
     std::string map_topic_;
@@ -41,6 +42,7 @@ private:
     double completion_hold_time_;
     double goal_clearance_radius_;
     double goal_search_radius_;
+    double retry_delay_after_abort_;
     int no_frontier_count_;
     int no_frontier_finish_count_;
     int min_frontier_cluster_size_;

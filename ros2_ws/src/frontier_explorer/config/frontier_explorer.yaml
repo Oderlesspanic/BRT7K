@@ -8,6 +8,7 @@ frontier_explorer_node:
     goal_search_radius: 1.50
 
     min_frontier_cluster_size: 3
+    retry_delay_after_abort: 8.0
     auto_finish_enabled: true
     # Anzahl aufeinanderfolgender Explorer-Zyklen ohne Frontier,
     # bevor Map Saver, Mapping-Stop und Navigation-Start ausgelöst werden.
