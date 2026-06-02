@@ -544,48 +544,41 @@ class TaskManagerNode(Node):
         node_name: str,
         timeout_sec: float,
     ) -> Tuple[bool, str]:
-        wait_success, wait_message = self._wait_for_lifecycle_state(
-            node_name,
-            {"unconfigured", "inactive", "active"},
-            timeout_sec=timeout_sec,
-        )
-        if not wait_success:
-            return False, wait_message
+        deadline = time.monotonic() + timeout_sec
+        last_state: Optional[str] = None
 
-        state = self._get_lifecycle_state(node_name)
-        if state == "active":
-            return True, f"{node_name} ist bereits active"
-
-        if state == "unconfigured":
-            success, message = self._set_lifecycle_transition(node_name, "configure")
-            if not success:
-                return False, message
-
-            wait_success, wait_message = self._wait_for_lifecycle_state(
-                node_name,
-                {"inactive", "active"},
-                timeout_sec=timeout_sec,
-            )
-            if not wait_success:
-                return False, wait_message
-
+        while time.monotonic() < deadline:
             state = self._get_lifecycle_state(node_name)
+            if state is None:
+                time.sleep(1.0)
+                continue
+
+            if state != last_state:
+                self.get_logger().info(f"{node_name} Lifecycle-State: {state}")
+                last_state = state
+
             if state == "active":
                 return True, f"{node_name} ist active"
 
-        success, message = self._set_lifecycle_transition(node_name, "activate")
-        if not success:
-            return False, message
+            if state == "unconfigured":
+                success, message = self._set_lifecycle_transition(node_name, "configure")
+                if not success:
+                    return False, message
+                self.get_logger().info(message)
+                time.sleep(2.0)
+                continue
 
-        wait_success, wait_message = self._wait_for_lifecycle_state(
-            node_name,
-            {"active"},
-            timeout_sec=timeout_sec,
-        )
-        if not wait_success:
-            return False, wait_message
+            if state == "inactive":
+                success, message = self._set_lifecycle_transition(node_name, "activate")
+                if not success:
+                    return False, message
+                self.get_logger().info(message)
+                time.sleep(2.0)
+                continue
 
-        return True, f"{node_name} ist active"
+            time.sleep(1.0)
+
+        return False, f"Timeout beim Aktivieren von {node_name}; letzter State: {last_state}"
 
     def _wait_for_lifecycle_state(
         self,
