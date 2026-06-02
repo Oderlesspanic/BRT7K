@@ -28,6 +28,7 @@ task_manager:
       - "frontier_explorer:frontier_explorer:frontier_explorer.launch.py"
       - "navigation:navigation:navigation.launch.py"
       - "navigation_slam:navigation:navigation_slam.launch.py"
+      - "navigation_debug:navigation:navigation_debug.launch.py"
       - "map_saver:mapping:map_saver.launch.py"
     start_all_targets:
       - "description"

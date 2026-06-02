@@ -217,6 +217,7 @@ const TASK_MANAGER_TARGETS = [
   { id: "hardware", label: "Hardware" },
   { id: "odometry", label: "Odometry" },
   { id: "slam", label: "SLAM" },
+  { id: "navigation_debug", label: "Nav Debug" },
   { id: "navigation_slam", label: "Nav SLAM" },
   { id: "frontier_explorer", label: "Frontier" },
   { id: "vision", label: "Vision" }
@@ -324,7 +325,7 @@ async function runTaskManagerAction(action, target) {
 
   const response = await callTriggerService(
     getTaskManagerService(action, target),
-    target === "navigation_slam" ? 90000 : 30000
+    target === "navigation_slam" || target === "navigation_debug" ? 90000 : 30000
   );
 
   if (!response.success) {
