@@ -67,6 +67,8 @@
 // ─────────────────────────────────────────────
 #define WHEEL_RADIUS_M   0.03656f  // m, matches robot_description wheel_radius
 #define WHEEL_BASE_M     0.3212f   // m, matches robot_description 2 * wheel_y
+#define MAX_CMD_LINEAR_MPS   0.10f
+#define MAX_CMD_ANGULAR_RADPS 0.25f
 #define ENCODER_STEPS_PER_REV 32768.0f
 #define ODOM_PUBLISH_MS 100
 
@@ -396,6 +398,9 @@ void cmd_vel_cb(const void * msgin) {
 
   float lin = (float)msg->linear.x;   // m/s
   float ang = (float)msg->angular.z;  // rad/s
+
+  lin = constrain(lin, -MAX_CMD_LINEAR_MPS, MAX_CMD_LINEAR_MPS);
+  ang = constrain(ang, -MAX_CMD_ANGULAR_RADPS, MAX_CMD_ANGULAR_RADPS);
 
   if (fabsf(lin) < 0.001f && fabsf(ang) < 0.001f) {
     stopDriveMotion();

@@ -49,6 +49,7 @@ controller_server:
       lookahead_dist: 0.25
       min_lookahead_dist: 0.15
       max_lookahead_dist: 0.40
+      use_rotate_to_heading: false
       rotate_to_heading_angular_vel: 0.25
       transform_tolerance: 0.2
 
@@ -91,9 +92,13 @@ behavior_server:
 
     spin:
       plugin: "nav2_behaviors::Spin"
+      max_rotational_vel: 0.20
+      min_rotational_vel: 0.05
+      rotational_acc_lim: 0.35
 
     backup:
       plugin: "nav2_behaviors::BackUp"
+      backup_speed: 0.03
 
     wait:
       plugin: "nav2_behaviors::Wait"
