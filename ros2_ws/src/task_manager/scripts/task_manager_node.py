@@ -72,6 +72,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
@@ -92,6 +93,7 @@ class ManagedLaunch:
     def __init__(self, target: LaunchTarget) -> None:
         self.target = target
         self.process: Optional[subprocess.Popen] = None
+        self.log_path: Optional[Path] = None
 
     def is_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
@@ -111,6 +113,8 @@ class TaskManagerNode(Node):
             target.name: ManagedLaunch(target) for target in self._targets
         }
         self._start_all_target_names = self._load_start_all_targets()
+        self._log_dir = self._load_log_dir()
+        self._log_dir.mkdir(parents=True, exist_ok=True)
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._command_sub = self.create_subscription(
@@ -146,7 +150,9 @@ class TaskManagerNode(Node):
         self.create_timer(2.0, self._publish_status)
 
         target_names = ", ".join(self._managed.keys())
-        self.get_logger().info(f"Task Manager gestartet. Targets: {target_names}")
+        self.get_logger().info(
+            f"Task Manager gestartet. Targets: {target_names}. Logs: {self._log_dir}"
+        )
 
     def _load_targets(self) -> List[LaunchTarget]:
         default_specs = [
@@ -192,6 +198,11 @@ class TaskManagerNode(Node):
             name for name in configured_targets
             if name in self._managed
         ]
+
+    def _load_log_dir(self) -> Path:
+        default_log_dir = os.environ.get("BRT7K_TASK_LOG_DIR", "/tmp/brt7k-task-manager")
+        self.declare_parameter("log_dir", default_log_dir)
+        return Path(str(self.get_parameter("log_dir").value))
 
     def _parse_target_spec(self, spec: str) -> Optional[LaunchTarget]:
         parts = spec.split(":", maxsplit=3)
@@ -396,17 +407,36 @@ class TaskManagerNode(Node):
             managed.target.launch_file,
             *managed.target.arguments,
         ]
+        log_path = self._log_dir / f"{target_name}.log"
+        managed.log_path = log_path
 
         try:
+            log_file = log_path.open("ab")
+            log_file.write(f"\n\n===== start {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n".encode())
+            log_file.write(("command: " + " ".join(command) + "\n").encode())
+            log_file.flush()
             managed.process = subprocess.Popen(
                 command,
                 start_new_session=True,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
             )
+            log_file.close()
         except OSError as exc:
             managed.process = None
             return False, f"{target_name} konnte nicht gestartet werden: {exc}"
 
-        return True, f"{target_name} gestartet: {' '.join(command)}"
+        time.sleep(0.5)
+        return_code = managed.returncode()
+        if return_code not in (None, 0):
+            managed.process = None
+            return (
+                False,
+                f"{target_name} ist direkt beendet (Returncode {return_code}). "
+                f"Log: {log_path}",
+            )
+
+        return True, f"{target_name} gestartet: {' '.join(command)}\nLog: {log_path}"
 
     def _stop_target(self, target_name: str) -> Tuple[bool, str]:
         managed = self._managed[target_name]
@@ -475,14 +505,16 @@ class TaskManagerNode(Node):
         lines = []
         for name, managed in self._managed.items():
             if managed.is_running():
-                lines.append(f"{name}: running pid={managed.process.pid}")
+                log_suffix = f" log={managed.log_path}" if managed.log_path else ""
+                lines.append(f"{name}: running pid={managed.process.pid}{log_suffix}")
                 continue
 
             return_code = managed.returncode()
             if return_code is None:
                 lines.append(f"{name}: stopped")
             else:
-                lines.append(f"{name}: exited returncode={return_code}")
+                log_suffix = f" log={managed.log_path}" if managed.log_path else ""
+                lines.append(f"{name}: exited returncode={return_code}{log_suffix}")
         return "\n".join(lines)
 
     def stop_all(self) -> None:

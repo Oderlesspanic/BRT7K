@@ -286,7 +286,7 @@ Before=brt7k-robot.service
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/udevadm settle --timeout=10
-ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive,gripper,lidar
+ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive,gripper
 RemainAfterExit=yes
 
 [Install]
