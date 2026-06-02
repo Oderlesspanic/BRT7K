@@ -502,17 +502,93 @@ class TaskManagerNode(Node):
         if not success:
             return False, "\n".join(messages)
 
-        time.sleep(12.0)
+        tf_success, tf_message = self._wait_for_tf("map", "base_link", timeout_sec=90.0)
+        messages.append(tf_message)
+        if not tf_success:
+            return False, "\n".join(messages)
 
-        for followup in ("navigation_slam", "frontier_explorer"):
-            if followup not in self._managed:
-                continue
-            success, message = self._start_target(followup)
+        if "navigation_slam" in self._managed:
+            success, message = self._start_target("navigation_slam")
+            messages.append(message)
+            if not success:
+                return False, "\n".join(messages)
+
+            action_success, action_message = self._wait_for_action_server(
+                "/navigate_to_pose",
+                timeout_sec=90.0,
+            )
+            messages.append(action_message)
+            if not action_success:
+                return False, "\n".join(messages)
+
+        if "frontier_explorer" in self._managed:
+            success, message = self._start_target("frontier_explorer")
             messages.append(message)
             if not success:
                 return False, "\n".join(messages)
 
         return True, "\n".join(messages)
+
+    def _wait_for_tf(
+        self,
+        target_frame: str,
+        source_frame: str,
+        timeout_sec: float,
+    ) -> Tuple[bool, str]:
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            try:
+                result = subprocess.run(
+                    ["ros2", "run", "tf2_ros", "tf2_echo", target_frame, source_frame],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=2.0,
+                    check=False,
+                )
+                output = result.stdout or ""
+            except subprocess.TimeoutExpired as exc:
+                output = ""
+                if exc.stdout:
+                    output = exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode()
+
+            if "Translation:" in output and "Rotation:" in output:
+                return True, f"TF {target_frame}->{source_frame} ist verfuegbar"
+
+            time.sleep(1.0)
+
+        return (
+            False,
+            f"Timeout beim Warten auf TF {target_frame}->{source_frame}; "
+            "navigation_slam/frontier_explorer werden nicht gestartet",
+        )
+
+    def _wait_for_action_server(
+        self,
+        action_name: str,
+        timeout_sec: float,
+    ) -> Tuple[bool, str]:
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            result = subprocess.run(
+                ["ros2", "action", "info", action_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=5.0,
+                check=False,
+            )
+            output = result.stdout or ""
+            if "Action servers: 1" in output:
+                return True, f"Action Server {action_name} ist verfuegbar"
+
+            time.sleep(1.0)
+
+        return (
+            False,
+            f"Timeout beim Warten auf Action Server {action_name}; "
+            "frontier_explorer wird nicht gestartet",
+        )
 
     def _publish_status(self) -> None:
         msg = String()
