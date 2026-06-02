@@ -4,10 +4,10 @@ frontier_explorer_node:
     action_name: "navigate_to_pose"
     explore_period: 2.0
 
-    goal_clearance_radius: 0.45
-    goal_search_radius: 1.20
+    goal_clearance_radius: 0.20
+    goal_search_radius: 1.50
 
-    min_frontier_cluster_size: 10
+    min_frontier_cluster_size: 3
     auto_finish_enabled: true
     # Anzahl aufeinanderfolgender Explorer-Zyklen ohne Frontier,
     # bevor Map Saver, Mapping-Stop und Navigation-Start ausgelöst werden.
