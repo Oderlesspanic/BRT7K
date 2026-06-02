@@ -391,6 +391,10 @@ class TaskManagerNode(Node):
         if action == "start":
             if target_name == "mapping":
                 return self._start_mapping_with_prerequisites()
+            if target_name == "slam":
+                return self._start_slam_target()
+            if target_name == "navigation_slam":
+                return self._start_navigation_slam_target()
             return self._start_target(target_name)
         if action == "stop":
             return self._stop_target(target_name)
@@ -489,8 +493,47 @@ class TaskManagerNode(Node):
         if not stop_success:
             return False, stop_message
 
-        start_success, start_message = self._start_target(target_name)
+        if target_name == "slam":
+            start_success, start_message = self._start_slam_target()
+        elif target_name == "navigation_slam":
+            start_success, start_message = self._start_navigation_slam_target()
+        else:
+            start_success, start_message = self._start_target(target_name)
         return start_success, f"{stop_message}\n{start_message}"
+
+    def _start_slam_target(self) -> Tuple[bool, str]:
+        messages = []
+        success, message = self._start_target("slam")
+        messages.append(message)
+        if not success:
+            return False, "\n".join(messages)
+
+        lifecycle_success, lifecycle_message = self._activate_lifecycle_node(
+            "/slam_toolbox",
+            timeout_sec=180.0,
+        )
+        messages.append(lifecycle_message)
+        if not lifecycle_success:
+            return False, "\n".join(messages)
+
+        return True, "\n".join(messages)
+
+    def _start_navigation_slam_target(self) -> Tuple[bool, str]:
+        messages = []
+        success, message = self._start_target("navigation_slam")
+        messages.append(message)
+        if not success:
+            return False, "\n".join(messages)
+
+        action_success, action_message = self._wait_for_action_server(
+            "/navigate_to_pose",
+            timeout_sec=120.0,
+        )
+        messages.append(action_message)
+        if not action_success:
+            return False, "\n".join(messages)
+
+        return True, "\n".join(messages)
 
     def _start_mapping_with_prerequisites(self) -> Tuple[bool, str]:
         messages = []
