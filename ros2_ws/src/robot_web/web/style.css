@@ -39,7 +39,7 @@ h1 {
 
 .dashboard {
   display: grid;
-  grid-template-columns: 300px minmax(520px, 1fr) 420px;
+  grid-template-columns: 300px minmax(420px, 1fr) 420px;
   gap: 20px;
   align-items: start;
 }
@@ -119,6 +119,86 @@ h1 {
 .lamp.green {
   background: limegreen;
   color: limegreen;
+}
+
+.service-panel {
+  margin-top: 18px;
+  border-top: 1px solid #333;
+  padding-top: 14px;
+}
+
+.service-panel h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.service-control-list {
+  display: grid;
+  gap: 8px;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) 74px 58px 58px;
+  align-items: center;
+  gap: 8px;
+}
+
+.service-name {
+  font-size: 13px;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-state {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  text-align: center;
+  background: #333;
+  color: #bbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-state.running {
+  background: #145c2a;
+  color: white;
+}
+
+.service-state.pending {
+  background: #5c5014;
+  color: white;
+}
+
+.service-state.exited {
+  background: #5c1414;
+  color: white;
+}
+
+.service-row button {
+  min-height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.service-row button:hover {
+  background: #555;
+}
+
+.service-row button.danger {
+  background: #5c1414;
+}
+
+.service-row button.danger:hover {
+  background: #7a1c1c;
 }
 
 #speedSlider {
@@ -317,7 +397,7 @@ hr {
   cursor: not-allowed;
 }
 
-.map-tile {
+.log-tile {
   min-width: 0;
 }
 
@@ -413,23 +493,13 @@ hr {
 
 @media (max-width: 1200px) {
   .dashboard {
-    grid-template-columns: 280px 1fr;
-  }
-
-  .map-tile {
-    grid-column: 2;
-    grid-row: 1;
+    grid-template-columns: 280px minmax(0, 1fr);
   }
 }
 
 @media (max-width: 900px) {
   .dashboard {
     grid-template-columns: 1fr;
-  }
-
-  .map-tile {
-    grid-column: auto;
-    grid-row: auto;
   }
 
   .log-entry {

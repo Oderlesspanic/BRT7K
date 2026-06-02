@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Robot Dashboard</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260602-1">
 </head>
 <body>
 
@@ -38,16 +38,20 @@
         <div><span id="lamp_imu" class="lamp red"></span>IMU</div>
         <div><span id="lamp_magnetometer" class="lamp red"></span>Magnetometer</div>
       </div>
+
+      <div class="service-panel">
+        <h3>Dienste</h3>
+        <div id="serviceControlList" class="service-control-list"></div>
+      </div>
     </div>
   </div>
 
-  <div class="tile map-tile">
-    <h2>Karte</h2>
+  <div class="tile log-tile">
+    <h2>ROS Logs</h2>
     <a class="map-link" href="map.html" target="_blank" rel="noopener">Karte im Vollbild öffnen</a>
-    <canvas id="mapCanvas"></canvas>
     <div class="log-panel">
       <div class="log-toolbar">
-        <h3>ROS Logs</h3>
+        <h3>Warnungen und Fehler</h3>
         <button id="btnClearLogs" type="button">Clear</button>
       </div>
       <div id="rosLogConsole" class="log-console" aria-live="polite"></div>
@@ -82,7 +86,7 @@
       <h3>Greifer</h3>
       <div class="tool-grid">
         <button id="btnGripOpen" type="button">Öffnen</button>
-        <button id="btnGripClose" type="button">Schließen</button>
+        <button id="btnGripClose" type="button">Schliessen</button>
         <button id="btnLiftUp" type="button">Anheben</button>
         <button id="btnLiftDown" type="button">Absenken</button>
         <button id="btnGripperStop" type="button" class="danger">Stop</button>
@@ -111,7 +115,7 @@
 </div>
 
 <script src="rosbridge_client.js?v=20260601-1"></script>
-<script src="app.js?v=20260601-1"></script>
+<script src="app.js?v=20260602-4"></script>
 
 </body>
 </html>

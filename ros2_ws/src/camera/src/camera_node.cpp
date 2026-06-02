@@ -52,6 +52,9 @@ CameraNode::CameraNode()
         return;
     }
 
+    width_ = driver_->width();
+    height_ = driver_->height();
+
     if (!driver_->start()) {
         publish_status("ERROR", "LibcameraDriver start() failed: Kamera wurde gefunden, Stream konnte aber nicht starten");
         RCLCPP_ERROR(this->get_logger(), "%s", status_text_.c_str());

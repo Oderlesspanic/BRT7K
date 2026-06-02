@@ -303,7 +303,7 @@ TEST(ColorPatchDetectorTest, DetectsBluePatchWithBrightnessGradient)
   EXPECT_GT(patches[0].hsv_stats.mean_s, 150.0);
   EXPECT_GT(patches[0].hsv_stats.mean_v, 150.0);
 
-  // Durch den Helligkeitsverlauf sollte std_v merklich größer als 0 sein
+  // Durch den Helligkeitsverlauf sollte std_v merklich groesser als 0 sein
   EXPECT_GT(patches[0].hsv_stats.std_v, 5.0);
 }
 

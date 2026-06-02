@@ -15,8 +15,8 @@ WheelOdometryNode::WheelOdometryNode()
   y_(0.0),
   theta_(0.0)
 {
-    left_wheel_joint_ = this->declare_parameter<std::string>("left_wheel_joint", "left_wheel_joint");
-    right_wheel_joint_ = this->declare_parameter<std::string>("right_wheel_joint", "right_wheel_joint");
+    left_wheel_joint_ = this->declare_parameter<std::string>("left_wheel_joint", "left_wheel_link_joint");
+    right_wheel_joint_ = this->declare_parameter<std::string>("right_wheel_joint", "right_wheel_link_joint");
 
     odom_frame_ = this->declare_parameter<std::string>("odom_frame", "odom");
     base_frame_ = this->declare_parameter<std::string>("base_frame", "base_link");

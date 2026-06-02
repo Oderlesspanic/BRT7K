@@ -1,6 +1,8 @@
 #include "frontier_explorer/frontier_explorer_node.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 using namespace std::chrono_literals;
 
@@ -9,6 +11,7 @@ FrontierExplorerNode::FrontierExplorerNode()
   map_received_(false),
   goal_active_(false),
   finish_requested_(false),
+  next_goal_allowed_time_(0, 0, RCL_ROS_TIME),
   no_frontier_count_(0)
 {
     loadParameters();
@@ -64,6 +67,26 @@ void FrontierExplorerNode::loadParameters()
         2.0
     );
 
+    this->declare_parameter<double>(
+        "goal_clearance_radius",
+        0.25
+    );
+
+    this->declare_parameter<double>(
+        "goal_search_radius",
+        0.70
+    );
+
+    this->declare_parameter<int>(
+        "min_frontier_cluster_size",
+        8
+    );
+
+    this->declare_parameter<double>(
+        "retry_delay_after_abort",
+        8.0
+    );
+
     this->declare_parameter<bool>(
         "auto_finish_enabled",
         true
@@ -97,6 +120,18 @@ void FrontierExplorerNode::loadParameters()
 
     explore_period_ =
         this->get_parameter("explore_period").as_double();
+
+    goal_clearance_radius_ =
+        this->get_parameter("goal_clearance_radius").as_double();
+
+    goal_search_radius_ =
+        this->get_parameter("goal_search_radius").as_double();
+
+    min_frontier_cluster_size_ =
+        this->get_parameter("min_frontier_cluster_size").as_int();
+
+    retry_delay_after_abort_ =
+        this->get_parameter("retry_delay_after_abort").as_double();
 
     auto_finish_enabled_ =
         this->get_parameter("auto_finish_enabled").as_bool();
@@ -151,8 +186,40 @@ void FrontierExplorerNode::timerCallback()
         return;
     }
 
+    if (this->now() < next_goal_allowed_time_)
+    {
+        return;
+    }
+
+    const double resolution = current_map_.info.resolution;
+    if (resolution <= 0.0)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Map hat ungueltige Aufloesung %.3f",
+            resolution
+        );
+        return;
+    }
+
+    const int goal_clearance_cells =
+        std::max(
+            1,
+            static_cast<int>(std::ceil(goal_clearance_radius_ / resolution))
+        );
+    const int goal_search_radius_cells =
+        std::max(
+            goal_clearance_cells,
+            static_cast<int>(std::ceil(goal_search_radius_ / resolution))
+        );
+
     auto frontier =
-        explorer_.findFrontier(current_map_);
+        explorer_.findFrontier(
+            current_map_,
+            goal_clearance_cells,
+            goal_search_radius_cells,
+            min_frontier_cluster_size_
+        );
 
     if (!frontier.has_value())
     {
@@ -213,6 +280,7 @@ void FrontierExplorerNode::sendGoal(
 
     NavigateToPose::Goal nav_goal;
     nav_goal.pose = goal;
+    goal_active_ = true;
 
     auto options =
         rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
@@ -258,6 +326,9 @@ void FrontierExplorerNode::sendGoal(
                         this->get_logger(),
                         "Goal abgebrochen"
                     );
+                    next_goal_allowed_time_ =
+                        this->now() +
+                        rclcpp::Duration::from_seconds(retry_delay_after_abort_);
                     break;
 
                 case rclcpp_action::ResultCode::CANCELED:
@@ -265,6 +336,9 @@ void FrontierExplorerNode::sendGoal(
                         this->get_logger(),
                         "Goal abgebrochen/canceled"
                     );
+                    next_goal_allowed_time_ =
+                        this->now() +
+                        rclcpp::Duration::from_seconds(retry_delay_after_abort_);
                     break;
 
                 default:

@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
-#include <INA226.h>
+#include <Adafruit_INA260.h>
 #include <string.h>
 
 // --- micro-ROS ---
@@ -26,12 +26,11 @@
 #define BRT7K_ROLE "drive"
 
 // ─────────────────────────────────────────────
-//  INA226 (I2C on D33/D32)
+//  INA260 (I2C on D33/D32)
 // ─────────────────────────────────────────────
-#define INA226_ADDR      0x41
-#define INA226_SDA       33
-#define INA226_SCL       32
-#define INA226_INIT_ATTEMPTS 5
+#define INA260_SDA       33
+#define INA260_SCL       32
+#define INA260_INIT_ATTEMPTS 5
 
 // ─────────────────────────────────────────────
 //  Battery capacity (adjust to your pack)
@@ -66,8 +65,10 @@
 // ─────────────────────────────────────────────
 //  Robot kinematics (adjust to your platform)
 // ─────────────────────────────────────────────
-#define WHEEL_RADIUS_M   0.05f   // m
-#define WHEEL_BASE_M     0.30f   // m  (distance between wheels)
+#define WHEEL_RADIUS_M   0.03656f  // m, matches robot_description wheel_radius
+#define WHEEL_BASE_M     0.3212f   // m, matches robot_description 2 * wheel_y
+#define MAX_CMD_LINEAR_MPS   0.10f
+#define MAX_CMD_ANGULAR_RADPS 0.25f
 #define ENCODER_STEPS_PER_REV 32768.0f
 #define ODOM_PUBLISH_MS 100
 
@@ -86,7 +87,7 @@
 // ─────────────────────────────────────────────
 Adafruit_NeoPixel ring1(NUM_LEDS, NEO_PIN_1, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel ring2(NUM_LEDS, NEO_PIN_2, NEO_GRB + NEO_KHZ800);
-INA226 ina226(INA226_ADDR);
+Adafruit_INA260 ina260;
 
 // ─────────────────────────────────────────────
 //  Integration state (written in loop, read in timers)
@@ -97,7 +98,7 @@ static float    s_consumed_wh = 0.0f;
 static float    s_consumed_ah = 0.0f;
 static uint32_t s_last_ms     = 0;
 static float    s_tof_cm      = TOF_OUT_OF_RANGE;
-static bool     s_ina226_ok   = false;
+static bool     s_ina260_ok   = false;
 
 static bool     s_odom_ready       = false;
 static float    s_last_left_rad    = 0.0f;
@@ -143,6 +144,14 @@ rcl_allocator_t allocator;
 rcl_node_t      node;
 
 static char s_diagnostics_text[180] = "INFO boot";
+static bool s_uros_entities_created = false;
+
+enum class AgentState {
+  WAITING,
+  CONNECTED,
+};
+
+static AgentState s_uros_state = AgentState::WAITING;
 
 static void setDiagnostics(const char * level, const char * text) {
   snprintf(s_diagnostics_text, sizeof(s_diagnostics_text), "%s %s", level, text);
@@ -154,8 +163,9 @@ static void publishDiagnostics() {
   (void)rc;
 }
 
-#define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){errorLoop();}}
-#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+#define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){setDiagnostics("ERROR", #fn); return false;}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; (void)temp_rc;}
+#define RCIGNORE(fn)    { rcl_ret_t temp_rc = fn; (void)temp_rc;}
 
 // ─────────────────────────────────────────────
 //  CRC-8 Dallas/Maxim  (poly 0x31, init 0x00)
@@ -248,6 +258,17 @@ static void updateMotorRamp() {
   motorSetSpeedRPM(Serial1, LEFT_ID, s_current_left_rpm);
   drainRx(Serial2);
   motorSetSpeedRPM(Serial2, RIGHT_ID, -s_current_right_rpm);  // right motor physically mirrored
+}
+
+static void stopDriveMotion() {
+  s_target_left_rpm = 0.0f;
+  s_target_right_rpm = 0.0f;
+  s_current_left_rpm = 0.0f;
+  s_current_right_rpm = 0.0f;
+  drainRx(Serial1);
+  motorSetSpeedRPM(Serial1, LEFT_ID, 0.0f);
+  drainRx(Serial2);
+  motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
 }
 
 static bool motorReadMileage(Stream &port, uint8_t id, int32_t &laps, uint16_t &position) {
@@ -378,15 +399,11 @@ void cmd_vel_cb(const void * msgin) {
   float lin = (float)msg->linear.x;   // m/s
   float ang = (float)msg->angular.z;  // rad/s
 
+  lin = constrain(lin, -MAX_CMD_LINEAR_MPS, MAX_CMD_LINEAR_MPS);
+  ang = constrain(ang, -MAX_CMD_ANGULAR_RADPS, MAX_CMD_ANGULAR_RADPS);
+
   if (fabsf(lin) < 0.001f && fabsf(ang) < 0.001f) {
-    s_target_left_rpm = 0.0f;
-    s_target_right_rpm = 0.0f;
-    s_current_left_rpm = 0.0f;
-    s_current_right_rpm = 0.0f;
-    drainRx(Serial1);
-    motorSetSpeedRPM(Serial1, LEFT_ID, 0.0f);
-    drainRx(Serial2);
-    motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
+    stopDriveMotion();
     setDiagnostics("INFO", "cmd_vel stop sofort ausgefuehrt");
     return;
   }
@@ -414,10 +431,10 @@ void timer_1hz_cb(rcl_timer_t * t, int64_t last_call_time) {
   msg_battery.capacity   = BATTERY_CAPACITY_AH;
   msg_battery.percentage = 1.0f - (s_consumed_wh / BATTERY_CAPACITY_WH);
 
-  if (s_ina226_ok) {
+  if (s_ina260_ok) {
     setDiagnostics("INFO", "running");
   } else {
-    setDiagnostics("WARN", "running, INA226 fehlt");
+    setDiagnostics("WARN", "running, INA260 fehlt");
   }
 
   RCSOFTCHECK(rcl_publish(&pub_battery,   &msg_battery,   NULL));
@@ -510,77 +527,9 @@ void timer_odom_cb(rcl_timer_t * t, int64_t last_call_time) {
 }
 
 // ─────────────────────────────────────────────
-//  Setup
+//  micro-ROS lifecycle
 // ─────────────────────────────────────────────
-void setup() {
-  announceBoardRole();
-
-  set_microros_transports();
-
-  pinMode(LED_RED, OUTPUT);
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_BLUE, OUTPUT);
-
-  ring1.begin(); ring2.begin();
-  ring1.setBrightness(50); ring2.setBrightness(50);
-  setRingColor(1, 0, 0, 0); setRingColor(2, 0, 0, 0);
-
-  // INA226 on custom I2C pins
-  Wire.begin(INA226_SDA, INA226_SCL);
-  for (int attempt = 0; attempt < INA226_INIT_ATTEMPTS; attempt++) {
-    if (ina226.begin()) {
-      s_ina226_ok = true;
-      break;
-    }
-
-    blinkLED(LED_RED, 1, 300);
-    delay(1000);
-  }
-
-  if (s_ina226_ok) {
-    ina226.setMaxCurrentShunt(10.0, 0.002);
-    ina226.setBusVoltageConversionTime(INA226_1100_us);
-    ina226.setShuntVoltageConversionTime(INA226_1100_us);
-    ina226.setAverage(INA226_16_SAMPLES);
-    setDiagnostics("INFO", "INA226 initialisiert");
-  } else {
-    s_voltage_V = NAN;
-    s_current_A = NAN;
-    setDiagnostics("WARN", "INA226 nicht gefunden, drive startet ohne Batteriemessung");
-  }
-
-  s_last_ms = millis();
-
-  // Motors
-  Serial1.begin(MOTOR_BAUD, SERIAL_8N1, MOTOR_LEFT_RX,  MOTOR_LEFT_TX);
-  Serial2.begin(MOTOR_BAUD, SERIAL_8N1, MOTOR_RIGHT_RX, MOTOR_RIGHT_TX);
-  delay(300);
-  motorSwitchToSpeedLoop(Serial1, LEFT_ID);
-  delay(10);
-  motorSwitchToSpeedLoop(Serial2, RIGHT_ID);
-  delay(10);
-  motorSetSpeedRPM(Serial1, LEFT_ID,  0.0f);
-  motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
-  s_last_motor_ramp_ms = millis();
-
-  // ADC resolution for SHARP TOF
-  analogReadResolution(12);
-
-  // BatteryState initial values
-  sensor_msgs__msg__BatteryState__init(&msg_battery);
-  std_msgs__msg__String__init(&msg_diagnostics);
-  msg_battery.temperature             = NAN;
-  msg_battery.charge                  = BATTERY_CAPACITY_AH;
-  msg_battery.capacity                = BATTERY_CAPACITY_AH;
-  msg_battery.design_capacity         = BATTERY_CAPACITY_AH;
-  msg_battery.percentage              = 1.0f;
-  msg_battery.power_supply_status     = 0;
-  msg_battery.power_supply_health     = 0;
-  msg_battery.power_supply_technology = 0;
-  msg_battery.present                 = true;
-  initWheelOdomMessage();
-
-  // micro-ROS node
+static bool createEntities() {
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
   rmw_uros_sync_session(1000);
@@ -625,13 +574,110 @@ void setup() {
   RCCHECK(rclc_executor_add_subscription(&executor, &sub_right_ring, &msg_sub_right, &right_ring_cb, ON_NEW_DATA));
   RCCHECK(rclc_executor_add_subscription(&executor, &sub_cmd_vel,    &msg_cmd_vel,   &cmd_vel_cb,    ON_NEW_DATA));
 
+  s_uros_entities_created = true;
   digitalWrite(LED_GREEN, HIGH);
   setDiagnostics("INFO", "micro-ROS verbunden, drive heartbeat und wheel odometry aktiv");
   publishDiagnostics();
+  return true;
+}
+
+static void destroyEntities() {
+  if (!s_uros_entities_created) return;
+
+  rmw_context_t* rmw_ctx = rcl_context_get_rmw_context(&support.context);
+  (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_ctx, 0);
+
+  RCSOFTCHECK(rclc_executor_fini(&executor));
+  RCIGNORE(rcl_timer_fini(&timer_1hz));
+  RCIGNORE(rcl_timer_fini(&timer_10hz));
+  RCIGNORE(rcl_timer_fini(&timer_odom));
+  RCIGNORE(rcl_subscription_fini(&sub_left_ring, &node));
+  RCIGNORE(rcl_subscription_fini(&sub_right_ring, &node));
+  RCIGNORE(rcl_subscription_fini(&sub_cmd_vel, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_battery, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_heartbeat, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_tof, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_wheel_odom, &node));
+  RCIGNORE(rcl_publisher_fini(&pub_diagnostics, &node));
+  RCIGNORE(rcl_node_fini(&node));
+  RCSOFTCHECK(rclc_support_fini(&support));
+
+  s_uros_entities_created = false;
 }
 
 // ─────────────────────────────────────────────
-//  Loop — fast INA226 + TOF integration (~6 ms)
+//  Setup
+// ─────────────────────────────────────────────
+void setup() {
+  announceBoardRole();
+
+  set_microros_transports();
+
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+
+  ring1.begin(); ring2.begin();
+  ring1.setBrightness(50); ring2.setBrightness(50);
+  setRingColor(1, 0, 0, 0); setRingColor(2, 0, 0, 0);
+
+  // INA260 on custom I2C pins
+  Wire.begin(INA260_SDA, INA260_SCL);
+  for (int attempt = 0; attempt < INA260_INIT_ATTEMPTS; attempt++) {
+    if (ina260.begin()) {
+      s_ina260_ok = true;
+      break;
+    }
+
+    blinkLED(LED_RED, 1, 300);
+    delay(1000);
+  }
+
+  if (s_ina260_ok) {
+    setDiagnostics("INFO", "INA260 initialisiert");
+  } else {
+    s_voltage_V = NAN;
+    s_current_A = NAN;
+    setDiagnostics("WARN", "INA260 nicht gefunden, drive startet ohne Batteriemessung");
+  }
+
+  s_last_ms = millis();
+
+  // Motors
+  Serial1.begin(MOTOR_BAUD, SERIAL_8N1, MOTOR_LEFT_RX,  MOTOR_LEFT_TX);
+  Serial2.begin(MOTOR_BAUD, SERIAL_8N1, MOTOR_RIGHT_RX, MOTOR_RIGHT_TX);
+  delay(300);
+  motorSwitchToSpeedLoop(Serial1, LEFT_ID);
+  delay(10);
+  motorSwitchToSpeedLoop(Serial2, RIGHT_ID);
+  delay(10);
+  motorSetSpeedRPM(Serial1, LEFT_ID,  0.0f);
+  motorSetSpeedRPM(Serial2, RIGHT_ID, 0.0f);
+  s_last_motor_ramp_ms = millis();
+
+  // ADC resolution for SHARP TOF
+  analogReadResolution(12);
+
+  // BatteryState initial values
+  sensor_msgs__msg__BatteryState__init(&msg_battery);
+  std_msgs__msg__String__init(&msg_diagnostics);
+  msg_battery.temperature             = NAN;
+  msg_battery.charge                  = BATTERY_CAPACITY_AH;
+  msg_battery.capacity                = BATTERY_CAPACITY_AH;
+  msg_battery.design_capacity         = BATTERY_CAPACITY_AH;
+  msg_battery.percentage              = 1.0f;
+  msg_battery.power_supply_status     = 0;
+  msg_battery.power_supply_health     = 0;
+  msg_battery.power_supply_technology = 0;
+  msg_battery.present                 = true;
+  initWheelOdomMessage();
+
+  digitalWrite(LED_GREEN, LOW);
+  setDiagnostics("INFO", "Drive Hardware initialisiert, warte auf micro-ROS Agent");
+}
+
+// ─────────────────────────────────────────────
+//  Loop — fast INA260 + TOF integration (~6 ms)
 // ─────────────────────────────────────────────
 void loop() {
   uint32_t now   = millis();
@@ -640,9 +686,9 @@ void loop() {
   if (dt_ms > 0) {
     s_last_ms = now;
 
-    if (s_ina226_ok) {
-      float v   = ina226.getBusVoltage();
-      float cur = ina226.getCurrent();
+    if (s_ina260_ok) {
+      float v   = ina260.readBusVoltage() / 1000.0f;
+      float cur = ina260.readCurrent() / 1000.0f;
       s_voltage_V = v;
       s_current_A = cur;
 
@@ -660,6 +706,43 @@ void loop() {
   }
 
   updateMotorRamp();
-  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1)));
+
+  switch (s_uros_state) {
+    case AgentState::WAITING: {
+      static uint32_t tRetry = 0;
+      if (millis() - tRetry >= 500) {
+        tRetry = millis();
+        if (RMW_RET_OK == rmw_uros_ping_agent(100, 1)) {
+          if (createEntities()) {
+            s_uros_state = AgentState::CONNECTED;
+          } else {
+            destroyEntities();
+            digitalWrite(LED_GREEN, LOW);
+            setDiagnostics("WARN", "micro-ROS init fehlgeschlagen, warte weiter");
+          }
+        }
+      }
+      break;
+    }
+
+    case AgentState::CONNECTED: {
+      static uint32_t tPing = 0;
+      if (millis() - tPing >= 1000) {
+        tPing = millis();
+        if (RMW_RET_OK != rmw_uros_ping_agent(50, 1)) {
+          destroyEntities();
+          stopDriveMotion();
+          digitalWrite(LED_GREEN, LOW);
+          setDiagnostics("WARN", "micro-ROS Agent verloren, Drive gestoppt");
+          s_uros_state = AgentState::WAITING;
+          break;
+        }
+      }
+
+      RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1)));
+      break;
+    }
+  }
+
   delay(5);
 }

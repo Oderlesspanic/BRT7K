@@ -19,6 +19,8 @@ public:
     bool start();
     bool capture_frame(std::vector<uint8_t>& data, uint64_t& timestamp_ns);
     void stop();
+    int width() const;
+    int height() const;
 
 private:
     void request_complete(libcamera::Request *request);
@@ -29,6 +31,8 @@ private:
     int width_;
     int height_;
     int fps_;
+    int y_stride_;
+    int uv_stride_;
 
     std::unique_ptr<libcamera::CameraManager> camera_manager_;
     std::shared_ptr<libcamera::Camera> camera_;

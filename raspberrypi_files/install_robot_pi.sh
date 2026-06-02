@@ -231,12 +231,22 @@ fi
 echo "==> Installing robot autostart launcher"
 install -m 0755 "${REPO_ROOT}/raspberrypi_files/brt7k_assign_serial.py" \
   /usr/local/bin/brt7k_assign_serial.py
+rm -f /etc/udev/rules.d/brt7k_serial.rules
+install -m 0644 "${REPO_ROOT}/raspberrypi_files/rplidar.rules" \
+  /etc/udev/rules.d/rplidar.rules
+udevadm control --reload-rules
+udevadm trigger
 
 cat > /usr/local/bin/brt7k_robot_autostart.sh <<EOF
 #!/usr/bin/env bash
 set -eo pipefail
 
 source /opt/ros/${ROS_DISTRO}/setup.bash
+if [[ ! -f "${ROS_WS}/install/setup.bash" ]]; then
+  echo "Missing ROS workspace overlay: ${ROS_WS}/install/setup.bash" >&2
+  echo "Build the workspace before starting brt7k-robot.service." >&2
+  exit 1
+fi
 source "${ROS_WS}/install/setup.bash"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID_VALUE}"
 export BRT7K_MAP_DIR="${MAP_DIR}"
@@ -261,9 +271,9 @@ for _ in {1..60}; do
   sleep 1
 done
 
-# Mapping and normal navigation are intentionally not started here.
-# Mapping remains a web-GUI action; navigation starts after finish_mapping saved a map.
-for target in description web hardware vision odometry; do
+# Start only the dashboard stack. Robot subsystems are controlled explicitly
+# through the web GUI or task_manager services.
+for target in web; do
   ros2 service call "/task_manager/start_\${target}" std_srvs/srv/Trigger "{}" || true
   sleep 1
 done
@@ -282,7 +292,7 @@ Before=brt7k-robot.service
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/udevadm settle --timeout=10
-ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive,gripper,lidar
+ExecStart=/usr/local/bin/brt7k_assign_serial.py --require drive
 RemainAfterExit=yes
 
 [Install]

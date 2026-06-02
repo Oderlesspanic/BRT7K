@@ -20,13 +20,6 @@ def generate_launch_description():
         "mmc5603.launch.py"
     )
 
-    imu_mag_fusion_dir = get_package_share_directory("imu_mag_fusion")
-    imu_mag_fusion_launch = os.path.join(
-        imu_mag_fusion_dir,
-        "launch",
-        "madgwick_with_cov_fix.launch.py"
-    )
-
     ekf_dir = get_package_share_directory("ekf")
     ekf_launch = os.path.join(
         ekf_dir,
@@ -41,9 +34,6 @@ def generate_launch_description():
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(mmc5603_launch)
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(imu_mag_fusion_launch)
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ekf_launch)

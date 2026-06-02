@@ -11,6 +11,11 @@ def generate_launch_description():
     params_file = LaunchConfiguration("params_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
     remappings = [("/tf", "tf"), ("/tf_static", "tf_static")]
+    lifecycle_nodes = [
+        "smoother_server",
+        "planner_server",
+    ]
+
     declare_params_file = DeclareLaunchArgument(
         "params_file",
         default_value=os.path.join(
@@ -31,13 +36,6 @@ def generate_launch_description():
         declare_params_file,
         declare_use_sim_time,
         Node(
-            package="nav2_controller",
-            executable="controller_server",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
-        ),
-        Node(
             package="nav2_smoother",
             executable="smoother_server",
             output="screen",
@@ -52,31 +50,16 @@ def generate_launch_description():
             remappings=remappings,
         ),
         Node(
-            package="nav2_behaviors",
-            executable="behavior_server",
+            package="nav2_lifecycle_manager",
+            executable="lifecycle_manager",
+            name="lifecycle_manager_navigation_debug",
             output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
-        ),
-        Node(
-            package="nav2_bt_navigator",
-            executable="bt_navigator",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
-        ),
-        Node(
-            package="nav2_waypoint_follower",
-            executable="waypoint_follower",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
-        ),
-        Node(
-            package="nav2_collision_monitor",
-            executable="collision_monitor",
-            output="screen",
-            parameters=[params_file, {"use_sim_time": use_sim_time}],
-            remappings=remappings,
+            parameters=[
+                {
+                    "use_sim_time": use_sim_time,
+                    "autostart": True,
+                    "node_names": lifecycle_nodes,
+                }
+            ],
         ),
     ])
