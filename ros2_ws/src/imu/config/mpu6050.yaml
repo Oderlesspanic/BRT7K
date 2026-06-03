@@ -1,6 +1,6 @@
 mpu6050_node:
   ros__parameters:
-    # I2C 
+    # I2C
     i2c_bus: "/dev/i2c-1"
     i2c_address: 104
     # Sensor configuration
@@ -23,7 +23,7 @@ mpu6050_node:
                              0.0, 0.0, 0.0,
                              0.0, 0.0, 0.0]
 
-    # Offset
+    # Kalibrierungsoffsets (von run_startup_calibration berechnet und hier eintragen)
     accel_offset_x: 0.0
     accel_offset_y: 0.0
     accel_offset_z: 0.0
@@ -31,3 +31,8 @@ mpu6050_node:
     gyro_offset_x: 0.0
     gyro_offset_y: 0.0
     gyro_offset_z: 0.0
+
+    # Startup-Kalibrierung: true = beim Start N Samples mitteln und Offsets setzen
+    # Roboter muss dabei vollkommen stillstehen!
+    calibrate_on_start: false
+    calibration_samples: 200

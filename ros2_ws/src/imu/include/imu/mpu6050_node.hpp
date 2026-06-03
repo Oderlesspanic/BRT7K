@@ -18,6 +18,7 @@ private:
     void declare_parameters();
     MPU6050Config load_config();
     void timer_callback();
+    void run_startup_calibration();
 
     MPU6050Config config_;
     std::shared_ptr<MPU6050Driver> driver_;

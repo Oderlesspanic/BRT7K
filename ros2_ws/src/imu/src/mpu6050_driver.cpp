@@ -1,4 +1,5 @@
 #include "imu/mpu6050_driver.hpp"
+#include <unistd.h>
 
 MPU6050Driver::MPU6050Driver(std::shared_ptr<I2CBus> bus, const MPU6050Config& config)
     : bus_(bus), config_(config)
@@ -17,6 +18,9 @@ bool MPU6050Driver::initialize()
     {
         return false;
     }
+
+    // 50ms warten bis Sensor stabil – MPU6050 braucht nach Power-On Zeit
+    usleep(50000);
 
     // Beschleunigung: ±2g
     if (!bus_->writeByte(REG_ACCEL_CONFIG, 0x00))

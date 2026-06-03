@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <unistd.h>
 #include <vector>
 
 MPU6050Node::MPU6050Node()
@@ -37,6 +38,12 @@ MPU6050Node::MPU6050Node()
 
     auto period = std::chrono::duration<double>(1.0 / config_.update_rate);
 
+    bool calibrate = this->get_parameter("calibrate_on_start").as_bool();
+    if (calibrate)
+    {
+        run_startup_calibration();
+    }
+
     timer_ = this->create_wall_timer(
         std::chrono::duration_cast<std::chrono::nanoseconds>(period),
         std::bind(&MPU6050Node::timer_callback, this)
@@ -50,6 +57,8 @@ void MPU6050Node::declare_parameters()
 {
     this->declare_parameter<std::string>("i2c_bus", "/dev/i2c-1");
     this->declare_parameter<int>("i2c_address", 104);
+    this->declare_parameter<bool>("calibrate_on_start", false);
+    this->declare_parameter<int>("calibration_samples", 200);
 
     this->declare_parameter<double>("accel_scale", 16384.0);
     this->declare_parameter<double>("gyro_scale", 131.0);
@@ -125,6 +134,68 @@ MPU6050Config MPU6050Node::load_config()
     }
 
     return config;
+}
+
+void MPU6050Node::run_startup_calibration()
+{
+    int n = this->get_parameter("calibration_samples").as_int();
+    if (n <= 0) { return; }
+
+    RCLCPP_INFO(this->get_logger(),
+        "Starte Kalibrierung mit %d Samples – Roboter muss stillstehen!", n);
+
+    double sum_ax = 0, sum_ay = 0, sum_az = 0;
+    double sum_gx = 0, sum_gy = 0, sum_gz = 0;
+    int collected = 0;
+
+    for (int i = 0; i < n; ++i)
+    {
+        auto raw = driver_->read_imu();
+        if (!raw.has_value())
+        {
+            RCLCPP_WARN(this->get_logger(), "Kalibrierung: Lesefehler bei Sample %d", i);
+            usleep(10000);
+            continue;
+        }
+
+        sum_ax += accel_raw_to_ms2(raw->accel_x, config_.accel_scale);
+        sum_ay += accel_raw_to_ms2(raw->accel_y, config_.accel_scale);
+        sum_az += accel_raw_to_ms2(raw->accel_z, config_.accel_scale);
+        sum_gx += gyro_raw_to_rads(raw->gyro_x, config_.gyro_scale);
+        sum_gy += gyro_raw_to_rads(raw->gyro_y, config_.gyro_scale);
+        sum_gz += gyro_raw_to_rads(raw->gyro_z, config_.gyro_scale);
+        ++collected;
+
+        usleep(5000); // 5ms zwischen Samples → ~200 Hz
+    }
+
+    if (collected < n / 2)
+    {
+        RCLCPP_ERROR(this->get_logger(),
+            "Kalibrierung fehlgeschlagen: zu wenige Samples (%d/%d)", collected, n);
+        return;
+    }
+
+    constexpr double G = 9.80665;
+    config_.accel_offset_x = sum_ax / collected;
+    config_.accel_offset_y = sum_ay / collected;
+    // Z-Achse: Gravitation abziehen (Sensor sollte ~9.81 m/s² messen)
+    config_.accel_offset_z = sum_az / collected - G;
+    config_.gyro_offset_x  = sum_gx / collected;
+    config_.gyro_offset_y  = sum_gy / collected;
+    config_.gyro_offset_z  = sum_gz / collected;
+
+    RCLCPP_WARN(this->get_logger(),
+        "Kalibrierung abgeschlossen (%d Samples). In mpu6050.yaml eintragen:\n"
+        "  accel_offset_x: %.6f\n"
+        "  accel_offset_y: %.6f\n"
+        "  accel_offset_z: %.6f\n"
+        "  gyro_offset_x:  %.6f\n"
+        "  gyro_offset_y:  %.6f\n"
+        "  gyro_offset_z:  %.6f",
+        collected,
+        config_.accel_offset_x, config_.accel_offset_y, config_.accel_offset_z,
+        config_.gyro_offset_x,  config_.gyro_offset_y,  config_.gyro_offset_z);
 }
 
 void MPU6050Node::timer_callback()
