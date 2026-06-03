@@ -681,8 +681,7 @@ class TaskManagerNode(Node):
         )
 
     def _wait_for_nav_and_start_frontier(self) -> None:
-        success, message = self._wait_for_action_server(
-            "/navigate_to_pose",
+        success, message = self._wait_for_navigation_slam_ready(
             timeout_sec=180.0,
         )
         if not success:
@@ -707,7 +706,7 @@ class TaskManagerNode(Node):
             self.get_logger().error(message)
 
     def _ensure_navigation_slam_ready_sequence(self) -> None:
-        success, message = self._wait_for_navigation_slam_active(timeout_sec=90.0)
+        success, message = self._wait_for_navigation_slam_active(timeout_sec=45.0)
         if success:
             self.get_logger().info(message)
         else:
@@ -1093,14 +1092,30 @@ class TaskManagerNode(Node):
         return False, "Timeout beim Warten auf /map; navigation_slam wird nicht gestartet"
 
     def _wait_for_frontier_ready(self, timeout_sec: float) -> Tuple[bool, str]:
-        success, message = self._wait_for_action_server(
-            "/navigate_to_pose",
-            timeout_sec=timeout_sec,
-        )
+        success, message = self._wait_for_navigation_slam_ready(timeout_sec=timeout_sec)
         if not success:
             return False, message
 
         return True, "Frontier Explorer ist startbereit"
+
+    def _wait_for_navigation_slam_ready(self, timeout_sec: float) -> Tuple[bool, str]:
+        deadline = time.monotonic() + timeout_sec
+
+        success, message = self._wait_for_navigation_slam_active(
+            timeout_sec=min(120.0, max(1.0, deadline - time.monotonic())),
+        )
+        if not success:
+            return False, message
+
+        remaining = max(1.0, deadline - time.monotonic())
+        success, message = self._wait_for_action_server(
+            "/navigate_to_pose",
+            timeout_sec=remaining,
+        )
+        if not success:
+            return False, message
+
+        return True, "navigation_slam ist active und /navigate_to_pose ist verfuegbar"
 
     def _handle_map(self, msg: OccupancyGrid) -> None:
         del msg
