@@ -11,6 +11,15 @@ def generate_launch_description():
     params_file = LaunchConfiguration("params_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
     remappings = [("/tf", "tf"), ("/tf_static", "tf_static")]
+    lifecycle_nodes = [
+        "controller_server",
+        "smoother_server",
+        "planner_server",
+        "behavior_server",
+        "bt_navigator",
+        "waypoint_follower",
+        "collision_monitor",
+    ]
     declare_params_file = DeclareLaunchArgument(
         "params_file",
         default_value=os.path.join(
@@ -78,5 +87,18 @@ def generate_launch_description():
             output="screen",
             parameters=[params_file, {"use_sim_time": use_sim_time}],
             remappings=remappings,
+        ),
+        Node(
+            package="nav2_lifecycle_manager",
+            executable="lifecycle_manager",
+            name="lifecycle_manager_navigation_slam",
+            output="screen",
+            parameters=[
+                {
+                    "use_sim_time": use_sim_time,
+                    "autostart": True,
+                    "node_names": lifecycle_nodes,
+                }
+            ],
         ),
     ])
