@@ -22,6 +22,8 @@ Der Node bietet die folgenden ROS 2 Services:
 - ~/start_all (Trigger): Startet alle verwalteten Launch Dateien.
 - ~/stop_all (Trigger): Stoppt alle verwalteten Launch Dateien.
 - ~/restart_all (Trigger): Startet alle verwalteten Launch Dateien neu.
+- ~/save_map (Trigger): Speichert die aktuelle SLAM-Karte ohne Mapping zu beenden.
+- ~/finish_mapping (Trigger): Speichert die Karte, beendet Mapping und startet Navigation.
 - ~/start_<target> (Trigger): Startet die angegebene Launch Datei.
 - ~/stop_<target> (Trigger): Stoppt die angegebene Launch Datei.
 - ~/restart_<target> (Trigger): Startet die angegebene Launch Datei neu.
@@ -162,6 +164,7 @@ class TaskManagerNode(Node):
         )
         self._map_received_event = threading.Event()
         self._frontier_ready = False
+        self._map_save_lock = threading.Lock()
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._frontier_ready_pub = self.create_publisher(String, "~/frontier_ready", 10)
@@ -187,6 +190,7 @@ class TaskManagerNode(Node):
         self.create_service(Trigger, "~/start_all", self._start_all_service)
         self.create_service(Trigger, "~/stop_all", self._stop_all_service)
         self.create_service(Trigger, "~/restart_all", self._restart_all_service)
+        self.create_service(Trigger, "~/save_map", self._save_map_service)
         self.create_service(Trigger, "~/finish_mapping", self._finish_mapping_service)
 
         for name in self._managed:
@@ -397,46 +401,35 @@ class TaskManagerNode(Node):
         response.message = "Mapping-Abschlusssequenz gestartet"
         return response
 
+    def _save_map_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        if self._map_save_lock.locked():
+            response.success = False
+            response.message = "Map-Save laeuft bereits"
+            return response
+
+        threading.Thread(target=self._save_map_sequence, daemon=True).start()
+        response.success = True
+        response.message = "Map-Save gestartet"
+        return response
+
     def _finish_mapping_sequence(self) -> None:
         self.get_logger().info("Mapping abgeschlossen: speichere Map")
 
-        if "map_saver" not in self._managed:
-            self.get_logger().error("Target 'map_saver' ist nicht im Taskmanager konfiguriert")
-            return
-
-        if "mapping" not in self._managed:
-            self.get_logger().error("Target 'mapping' ist nicht im Taskmanager konfiguriert")
+        save_success, save_message = self._run_map_saver_once(timeout_sec=60.0)
+        if save_success:
+            self.get_logger().info(save_message)
+        else:
+            self.get_logger().error(save_message)
             return
 
         if "navigation" not in self._managed:
             self.get_logger().error("Target 'navigation' ist nicht im Taskmanager konfiguriert")
             return
-
-        success, message = self._start_target("map_saver")
-        if not success:
-            self.get_logger().error(message)
-            return
-
-        self.get_logger().info(message)
-
-        map_saver = self._managed["map_saver"]
-        deadline = time.monotonic() + 60.0
-        while map_saver.is_running() and time.monotonic() < deadline:
-            time.sleep(0.5)
-
-        if map_saver.is_running():
-            self.get_logger().error("Map saver Timeout; Mapping wird nicht automatisch beendet")
-            return
-
-        return_code = map_saver.returncode()
-        if return_code not in (0, None):
-            self.get_logger().error(
-                f"Map saver fehlgeschlagen mit Returncode {return_code}; Mapping bleibt aktiv"
-            )
-            return
-
-        self.get_logger().info("Map gespeichert; stoppe Map Saver")
-        self._stop_target("map_saver")
 
         initial_pose_tf = self._lookup_current_robot_pose_in_map()
 
@@ -460,6 +453,54 @@ class TaskManagerNode(Node):
                 )
         else:
             self.get_logger().error(nav_message)
+
+    def _save_map_sequence(self) -> None:
+        success, message = self._run_map_saver_once(timeout_sec=60.0)
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+
+    def _run_map_saver_once(self, timeout_sec: float) -> Tuple[bool, str]:
+        if not self._map_save_lock.acquire(blocking=False):
+            return False, "Map-Save laeuft bereits"
+
+        try:
+            return self._run_map_saver_once_locked(timeout_sec=timeout_sec)
+        finally:
+            self._map_save_lock.release()
+
+    def _run_map_saver_once_locked(self, timeout_sec: float) -> Tuple[bool, str]:
+        if "map_saver" not in self._managed:
+            return False, "Target 'map_saver' ist nicht im Taskmanager konfiguriert"
+
+        if "mapping" not in self._managed:
+            return False, "Target 'mapping' ist nicht im Taskmanager konfiguriert"
+
+        success, message = self._start_target("map_saver")
+        if not success:
+            return False, message
+
+        self.get_logger().info(message)
+
+        map_saver = self._managed["map_saver"]
+        deadline = time.monotonic() + timeout_sec
+        while map_saver.is_running() and time.monotonic() < deadline:
+            time.sleep(0.5)
+
+        if map_saver.is_running():
+            return False, "Map saver Timeout; Mapping bleibt aktiv"
+
+        return_code = map_saver.returncode()
+        if return_code not in (0, None):
+            return (
+                False,
+                f"Map saver fehlgeschlagen mit Returncode {return_code}; Mapping bleibt aktiv",
+            )
+
+        self.get_logger().info("Map gespeichert; stoppe Map Saver")
+        self._stop_target("map_saver")
+        return True, "Map gespeichert"
 
     def _handle_command(self, msg: String) -> None:
         command = msg.data.strip().lower()

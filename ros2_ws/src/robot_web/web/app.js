@@ -226,9 +226,9 @@ const cancelObjectTaskService = new ROSLIB.Service({
   serviceType: "std_srvs/srv/Trigger"
 });
 
-const finishMappingService = new ROSLIB.Service({
+const saveMapService = new ROSLIB.Service({
   ros: ros,
-  name: "/task_manager/finish_mapping",
+  name: "/task_manager/save_map",
   serviceType: "std_srvs/srv/Trigger"
 });
 
@@ -358,7 +358,7 @@ btnStartMapping.addEventListener("click", async () => {
 
 btnSaveMap.addEventListener("click", async () => {
   btnSaveMap.disabled = true;
-  const response = await callTriggerService(finishMappingService, 300000);
+  const response = await callTriggerService(saveMapService, 300000);
 
   if (!response.success) {
     alert("Map konnte nicht gespeichert werden: " + response.message);
