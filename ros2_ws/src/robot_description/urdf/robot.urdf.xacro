@@ -7,7 +7,7 @@
 
   <xacro:arg name="wheel_radius" default="0.03660"/> 
   <xacro:arg name="wheel_width" default="0.0200"/> 
-  <xacro:arg name="wheel_y" default="0.2110"/> 
+  <xacro:arg name="wheel_y" default="0.1610"/>
 
   <xacro:arg name="gripper_x" default="0.3"/>
   <xacro:arg name="gripper_y" default="0.2"/>
