@@ -3,7 +3,7 @@ mmc5603_node:
     i2c_bus: "/dev/i2c-1"
     device_address: 48
     frame_id: "magnetometer_link"
-    publish_rate: 5.0
+    publish_rate: 100.0
 
     offset_x: 0.0
     offset_y: 0.0
