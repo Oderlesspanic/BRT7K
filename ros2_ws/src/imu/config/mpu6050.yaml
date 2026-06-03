@@ -31,3 +31,7 @@ mpu6050_node:
     gyro_offset_x: 0.0
     gyro_offset_y: 0.0
     gyro_offset_z: 0.0
+
+    gyro_auto_calibration: true
+    accel_auto_calibration: false
+    calibration_samples: 100

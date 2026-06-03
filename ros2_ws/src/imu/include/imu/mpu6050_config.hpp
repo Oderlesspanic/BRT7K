@@ -19,6 +19,10 @@ struct MPU6050Config
     double gyro_offset_y{0.0};
     double gyro_offset_z{0.0};
 
+    bool gyro_auto_calibration{true};
+    bool accel_auto_calibration{false};
+    int calibration_samples{100};
+
     std::string frame_id{"imu_link"};
     double update_rate{100.0};
 
