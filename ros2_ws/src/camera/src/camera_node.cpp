@@ -98,7 +98,7 @@ void CameraNode::timer_callback()
     msg.header.frame_id = frame_id_;
     msg.height = static_cast<uint32_t>(height_);
     msg.width = static_cast<uint32_t>(width_);
-    msg.encoding = "rgb8";
+    msg.encoding = "bgr8";
     msg.is_bigendian = false;
     msg.step = static_cast<sensor_msgs::msg::Image::_step_type>(width_ * 3);
     msg.data = std::move(frame);

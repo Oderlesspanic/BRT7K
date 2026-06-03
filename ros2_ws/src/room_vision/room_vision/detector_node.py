@@ -14,6 +14,7 @@ Parameter (per ros2 param oder Launch-File ueberschreibbar):
     input_topic         : /camera/image_raw
     image_output_topic  : /room_vision/image_annotated
     detections_topic    : /room_vision/detections
+    publish_annotated   : false
     input_size          : 640
     confidence_threshold: 0.25
     nms_threshold       : 0.45
@@ -60,6 +61,7 @@ class YoloDetectorNode(Node):
         self.declare_parameter("input_topic", "/camera/image_raw")
         self.declare_parameter("image_output_topic", "/room_vision/image_annotated")
         self.declare_parameter("detections_topic", "/room_vision/detections")
+        self.declare_parameter("publish_annotated", False)
         self.declare_parameter("input_size", 640)
         self.declare_parameter("confidence_threshold", 0.25)
         self.declare_parameter("nms_threshold", 0.45)
@@ -70,6 +72,7 @@ class YoloDetectorNode(Node):
         self.conf_thres: float = float(self.get_parameter("confidence_threshold").value)
         self.nms_thres: float = float(self.get_parameter("nms_threshold").value)
         self.class_names: List[str] = list(self.get_parameter("class_names").value)
+        self.publish_annotated: bool = bool(self.get_parameter("publish_annotated").value)
 
         input_topic: str = self.get_parameter("input_topic").value
         image_out_topic: str = self.get_parameter("image_output_topic").value
@@ -99,12 +102,15 @@ class YoloDetectorNode(Node):
         self.sub_image = self.create_subscription(
             Image, input_topic, self._on_image, 10
         )
-        self.pub_image = self.create_publisher(Image, image_out_topic, 10)
+        self.pub_image = (
+            self.create_publisher(Image, image_out_topic, 10)
+            if self.publish_annotated else None
+        )
         self.pub_detections = self.create_publisher(Detection2DArray, det_out_topic, 10)
 
         self.get_logger().info(
             f"Subscribed:  {input_topic}\n"
-            f"Publishing:  {image_out_topic} (annotated)\n"
+            f"Publishing:  {image_out_topic} (annotated={self.publish_annotated})\n"
             f"             {det_out_topic} (Detection2DArray)\n"
             f"Klassen:     {self.class_names}"
         )
@@ -237,40 +243,40 @@ class YoloDetectorNode(Node):
             raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
         )
 
-        # --- Detection2DArray zusammenbauen + Boxen zeichnen ----------------
+        # --- Detection2DArray zusammenbauen ---------------------------------
         det_array = Detection2DArray()
         det_array.header = msg.header  # gleicher frame_id/stamp wie die Kamera
 
-        annotated = frame.copy()
-        h, w = annotated.shape[:2]
+        annotated = frame.copy() if self.publish_annotated else None
+        h, w = frame.shape[:2]
         cx_img, cy_img = w // 2, h // 2
 
         for (x1, y1, x2, y2, score, cls_id) in detections:
             name = self._class_name(cls_id)
-            color = self.class_colors[cls_id % len(self.class_colors)]
-            color_bgr = (int(color[0]), int(color[1]), int(color[2]))
 
             obj_cx = (x1 + x2) // 2
             obj_cy = (y1 + y2) // 2
 
-            # Linie von Bildmitte zum Objektzentrum
-            cv2.line(annotated, (cx_img, cy_img), (obj_cx, obj_cy), (0, 255, 255), 2)
+            if annotated is not None:
+                color = self.class_colors[cls_id % len(self.class_colors)]
+                color_bgr = (int(color[0]), int(color[1]), int(color[2]))
 
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color_bgr, 2)
-            label = f"{name} {score:.2f} x={obj_cx} y={obj_cy}"
-            (tw, th), baseline = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
-            )
-            cv2.rectangle(
-                annotated,
-                (x1, max(0, y1 - th - baseline - 3)),
-                (x1 + tw + 2, y1),
-                color_bgr, thickness=-1,
-            )
-            cv2.putText(
-                annotated, label, (x1 + 1, max(th, y1 - 3)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
-            )
+                cv2.line(annotated, (cx_img, cy_img), (obj_cx, obj_cy), (0, 255, 255), 2)
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color_bgr, 2)
+                label = f"{name} {score:.2f} x={obj_cx} y={obj_cy}"
+                (tw, th), baseline = cv2.getTextSize(
+                    label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
+                )
+                cv2.rectangle(
+                    annotated,
+                    (x1, max(0, y1 - th - baseline - 3)),
+                    (x1 + tw + 2, y1),
+                    color_bgr, thickness=-1,
+                )
+                cv2.putText(
+                    annotated, label, (x1 + 1, max(th, y1 - 3)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
+                )
 
             det = Detection2D()
             det.header = msg.header
@@ -289,17 +295,18 @@ class YoloDetectorNode(Node):
 
             det_array.detections.append(det)
 
-        # Fadenkreuz zuletzt zeichnen (liegt ueber allem)
-        cv2.circle(annotated, (cx_img, cy_img), 6, (255, 255, 255), -1)
-        cv2.circle(annotated, (cx_img, cy_img), 7, (0, 0, 0), 1)
-        cv2.line(annotated, (cx_img - 25, cy_img), (cx_img + 25, cy_img), (255, 255, 255), 2)
-        cv2.line(annotated, (cx_img, cy_img - 25), (cx_img, cy_img + 25), (255, 255, 255), 2)
+        if annotated is not None:
+            cv2.circle(annotated, (cx_img, cy_img), 6, (255, 255, 255), -1)
+            cv2.circle(annotated, (cx_img, cy_img), 7, (0, 0, 0), 1)
+            cv2.line(annotated, (cx_img - 25, cy_img), (cx_img + 25, cy_img), (255, 255, 255), 2)
+            cv2.line(annotated, (cx_img, cy_img - 25), (cx_img, cy_img + 25), (255, 255, 255), 2)
 
         self.pub_detections.publish(det_array)
 
-        out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
-        out_msg.header = msg.header
-        self.pub_image.publish(out_msg)
+        if annotated is not None and self.pub_image is not None:
+            out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
+            out_msg.header = msg.header
+            self.pub_image.publish(out_msg)
 
 
 def main(args: list | None = None) -> None:

@@ -2,9 +2,11 @@
 
 #include <condition_variable>
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <unordered_map>
 #include <vector>
 
 #include <libcamera/libcamera.h>
@@ -12,6 +14,13 @@
 class LibcameraDriver
 {
 public:
+    struct MappedPlane
+    {
+        void* base = nullptr;
+        size_t mapped_length = 0;
+        const uint8_t* data = nullptr;
+    };
+
     LibcameraDriver();
     ~LibcameraDriver();
 
@@ -24,6 +33,8 @@ public:
 
 private:
     void request_complete(libcamera::Request *request);
+    bool map_buffers();
+    void unmap_buffers();
 
     bool initialized_;
     bool running_;
@@ -41,6 +52,7 @@ private:
     libcamera::Stream* stream_;
 
     std::vector<std::unique_ptr<libcamera::Request>> requests_;
+    std::unordered_map<libcamera::FrameBuffer*, std::vector<MappedPlane>> mapped_buffers_;
 
     std::mutex completed_mutex_;
     std::condition_variable completed_cv_;

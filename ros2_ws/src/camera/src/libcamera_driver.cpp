@@ -1,44 +1,33 @@
 #include "camera/libcamera_driver.hpp"
 #include "camera/image_converter.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <iostream>
 #include <sys/mman.h>
 #include <vector>
 
+#include <libcamera/control_ids.h>
+
 namespace
 {
-struct MappedPlane
-{
-    void* base = MAP_FAILED;
-    size_t mapped_length = 0;
-    const uint8_t* data = nullptr;
-};
-
-MappedPlane map_plane(const libcamera::FrameBuffer::Plane &plane)
+LibcameraDriver::MappedPlane map_plane(const libcamera::FrameBuffer::Plane &plane)
 {
     const size_t offset = static_cast<size_t>(plane.offset);
     const size_t length = static_cast<size_t>(plane.length);
-    MappedPlane mapped;
+    LibcameraDriver::MappedPlane mapped;
 
     mapped.mapped_length = offset + length;
     mapped.base = mmap(nullptr, mapped.mapped_length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
     if (mapped.base == MAP_FAILED) {
+        mapped.base = nullptr;
         mapped.mapped_length = 0;
         return mapped;
     }
 
     mapped.data = static_cast<const uint8_t*>(mapped.base) + offset;
     return mapped;
-}
-
-void unmap_plane(MappedPlane &plane)
-{
-    if (plane.base != MAP_FAILED) {
-        munmap(plane.base, plane.mapped_length);
-    }
-
-    plane = {};
 }
 }
 
@@ -63,7 +52,7 @@ bool LibcameraDriver::initialize(int width, int height, int fps)
 {
     width_ = width;
     height_ = height;
-    fps_ = fps;
+    fps_ = std::max(1, fps);
 
     camera_manager_ = std::make_unique<libcamera::CameraManager>();
     if (camera_manager_->start() != 0) {
@@ -94,6 +83,7 @@ bool LibcameraDriver::initialize(int width, int height, int fps)
     cfg.size.width = width_;
     cfg.size.height = height_;
     cfg.pixelFormat = libcamera::formats::YUV420;
+    cfg.bufferCount = 2;
 
     libcamera::CameraConfiguration::Status validation = config_->validate();
     if (validation == libcamera::CameraConfiguration::Invalid) {
@@ -133,6 +123,11 @@ bool LibcameraDriver::initialize(int width, int height, int fps)
         return false;
     }
 
+    if (!map_buffers()) {
+        std::cerr << "Buffer mapping fehlgeschlagen\n";
+        return false;
+    }
+
     requests_.clear();
     for (const std::unique_ptr<libcamera::FrameBuffer> &buffer : buffers) {
         std::unique_ptr<libcamera::Request> request = camera_->createRequest();
@@ -161,7 +156,16 @@ bool LibcameraDriver::start()
         return false;
     }
 
-    if (camera_->start() != 0) {
+    libcamera::ControlList controls(camera_->controls());
+    const int64_t frame_duration_us = 1000000 / std::max(1, fps_);
+    const std::array<int64_t, 2> frame_duration_limits{
+        frame_duration_us,
+        frame_duration_us
+    };
+    controls.set(libcamera::controls::FrameDurationLimits,
+        libcamera::Span<const int64_t, 2>(frame_duration_limits));
+
+    if (camera_->start(&controls) != 0) {
         std::cerr << "camera start fehlgeschlagen\n";
         return false;
     }
@@ -213,34 +217,24 @@ bool LibcameraDriver::capture_frame(std::vector<uint8_t>& data, uint64_t& timest
         return false;
     }
 
-    MappedPlane y_mem = map_plane(planes[0]);
-    MappedPlane u_mem = map_plane(planes[1]);
-    MappedPlane v_mem = map_plane(planes[2]);
-
-    if (y_mem.base == MAP_FAILED || u_mem.base == MAP_FAILED || v_mem.base == MAP_FAILED) {
-        unmap_plane(y_mem);
-        unmap_plane(u_mem);
-        unmap_plane(v_mem);
-
+    const auto mapped_it = mapped_buffers_.find(buffer);
+    if (mapped_it == mapped_buffers_.end() || mapped_it->second.size() < 3) {
         request->reuse(libcamera::Request::ReuseBuffers);
         camera_->queueRequest(request);
         return false;
     }
 
-    ImageConverter::yuv420_to_rgb(
-        y_mem.data,
-        u_mem.data,
-        v_mem.data,
+    const auto &mapped_planes = mapped_it->second;
+    ImageConverter::yuv420_to_bgr(
+        mapped_planes[0].data,
+        mapped_planes[1].data,
+        mapped_planes[2].data,
         width_,
         height_,
         y_stride_,
         uv_stride_,
         data
     );
-
-    unmap_plane(y_mem);
-    unmap_plane(u_mem);
-    unmap_plane(v_mem);
 
     timestamp_ns = 0;
     if (buffer->metadata().timestamp) {
@@ -278,6 +272,7 @@ void LibcameraDriver::stop()
         camera_.reset();
     }
 
+    unmap_buffers();
     allocator_.reset();
     config_.reset();
 
@@ -287,6 +282,46 @@ void LibcameraDriver::stop()
     }
 
     initialized_ = false;
+}
+
+bool LibcameraDriver::map_buffers()
+{
+    unmap_buffers();
+
+    const auto &buffers = allocator_->buffers(stream_);
+    for (const auto &buffer : buffers) {
+        std::vector<MappedPlane> mapped_planes;
+        mapped_planes.reserve(buffer->planes().size());
+
+        for (const auto &plane : buffer->planes()) {
+            MappedPlane mapped = map_plane(plane);
+            if (mapped.base == nullptr || mapped.data == nullptr) {
+                unmap_buffers();
+                return false;
+            }
+
+            mapped_planes.push_back(mapped);
+        }
+
+        mapped_buffers_[buffer.get()] = std::move(mapped_planes);
+    }
+
+    return true;
+}
+
+void LibcameraDriver::unmap_buffers()
+{
+    for (auto &[buffer, planes] : mapped_buffers_) {
+        (void)buffer;
+        for (auto &plane : planes) {
+            if (plane.base != nullptr) {
+                munmap(plane.base, plane.mapped_length);
+            }
+            plane = {};
+        }
+    }
+
+    mapped_buffers_.clear();
 }
 
 void LibcameraDriver::request_complete(libcamera::Request *request)
