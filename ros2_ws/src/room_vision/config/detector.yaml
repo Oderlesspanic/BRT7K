@@ -4,6 +4,7 @@ room_vision_detector:
     image_output_topic: "/room_vision/image_annotated"
     detections_topic: "/room_vision/detections"
     publish_annotated: false
+    backend: "auto"
     input_size: 640
     confidence_threshold: 0.25
     nms_threshold: 0.45

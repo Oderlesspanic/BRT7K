@@ -31,7 +31,7 @@ Abhaengigkeiten (package.xml / rosdep):
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import cv2
 import numpy as np
@@ -49,6 +49,8 @@ except ImportError:  # pragma: no cover
 
 
 DEFAULT_CLASS_NAMES = ["wurfel", "ball", "mate", "fhgr_logo"]
+OPENCV_BACKEND = "opencv"
+ONNXRUNTIME_BACKEND = "onnxruntime"
 
 
 class YoloDetectorNode(Node):
@@ -62,6 +64,7 @@ class YoloDetectorNode(Node):
         self.declare_parameter("image_output_topic", "/room_vision/image_annotated")
         self.declare_parameter("detections_topic", "/room_vision/detections")
         self.declare_parameter("publish_annotated", False)
+        self.declare_parameter("backend", "auto")
         self.declare_parameter("input_size", 640)
         self.declare_parameter("confidence_threshold", 0.25)
         self.declare_parameter("nms_threshold", 0.45)
@@ -73,6 +76,9 @@ class YoloDetectorNode(Node):
         self.nms_thres: float = float(self.get_parameter("nms_threshold").value)
         self.class_names: List[str] = list(self.get_parameter("class_names").value)
         self.publish_annotated: bool = bool(self.get_parameter("publish_annotated").value)
+        self.backend: str = str(self.get_parameter("backend").value).strip().lower()
+        self.net: Any = None
+        self.ort_input_name: str = ""
 
         input_topic: str = self.get_parameter("input_topic").value
         image_out_topic: str = self.get_parameter("image_output_topic").value
@@ -87,11 +93,7 @@ class YoloDetectorNode(Node):
                 f"Tipp: Parameter 'model_path' setzen oder best.onnx nach "
                 f"<room_vision>/models/best.onnx legen."
             )
-        self.get_logger().info(f"Lade ONNX-Modell: {self.model_path}")
-        try:
-            self.net = cv2.dnn.readNetFromONNX(self.model_path)
-        except cv2.error as exc:
-            raise RuntimeError(f"ONNX-Modell konnte nicht geladen werden: {self.model_path}: {exc}") from exc
+        self._load_model()
 
         # Optional: CUDA aktivieren, wenn OpenCV mit CUDA kompiliert ist.
         # self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
@@ -117,6 +119,7 @@ class YoloDetectorNode(Node):
             f"Subscribed:  {input_topic}\n"
             f"Publishing:  {image_out_topic} (annotated={self.publish_annotated})\n"
             f"             {det_out_topic} (Detection2DArray)\n"
+            f"Backend:     {self.backend}\n"
             f"Klassen:     {self.class_names}"
         )
 
@@ -153,6 +156,43 @@ class YoloDetectorNode(Node):
                 return candidate
         return configured_path
 
+    def _load_model(self) -> None:
+        requested_backend = self.backend
+        if requested_backend in ("auto", ONNXRUNTIME_BACKEND):
+            try:
+                import onnxruntime as ort  # type: ignore[import-not-found]
+
+                session_options = ort.SessionOptions()
+                session_options.intra_op_num_threads = 1
+                session_options.inter_op_num_threads = 1
+                session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                self.net = ort.InferenceSession(
+                    self.model_path,
+                    sess_options=session_options,
+                    providers=["CPUExecutionProvider"],
+                )
+                self.ort_input_name = self.net.get_inputs()[0].name
+                self.backend = ONNXRUNTIME_BACKEND
+                self.get_logger().info(f"Lade ONNX-Modell mit onnxruntime: {self.model_path}")
+                return
+            except ImportError:
+                if requested_backend == ONNXRUNTIME_BACKEND:
+                    raise RuntimeError(
+                        "backend=onnxruntime gesetzt, aber Python-Modul 'onnxruntime' ist nicht installiert"
+                    ) from None
+                self.get_logger().warn("onnxruntime ist nicht installiert; verwende OpenCV-DNN")
+            except Exception as exc:
+                if requested_backend == ONNXRUNTIME_BACKEND:
+                    raise RuntimeError(f"ONNX Runtime konnte Modell nicht laden: {self.model_path}: {exc}") from exc
+                self.get_logger().warn(f"ONNX Runtime konnte Modell nicht laden; verwende OpenCV-DNN: {exc}")
+
+        self.get_logger().info(f"Lade ONNX-Modell mit OpenCV-DNN: {self.model_path}")
+        try:
+            self.net = cv2.dnn.readNetFromONNX(self.model_path)
+            self.backend = OPENCV_BACKEND
+        except cv2.error as exc:
+            raise RuntimeError(f"OpenCV-DNN konnte ONNX-Modell nicht laden: {self.model_path}: {exc}") from exc
+
     def _letterbox(self, img: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
         """
         YOLOv8-typische Vorverarbeitung: aspect-ratio erhalten, mit 114 padden.
@@ -182,8 +222,17 @@ class YoloDetectorNode(Node):
         YOLOv8-Output: shape (1, 4 + num_classes, N) mit N = 8400 Anchors.
         Ergebnis: Liste von (x1, y1, x2, y2, score, class_id) in Original-Bildkoords.
         """
-        pred = raw_out[0]                       # (4 + C, N)
-        pred = pred.transpose(1, 0)             # (N, 4 + C)
+        pred = raw_out[0]
+        if pred.ndim != 2:
+            self.get_logger().error(f"Unerwartete YOLO-Output-Shape: {raw_out.shape}")
+            return []
+
+        expected_channels = 4 + len(self.class_names)
+        if pred.shape[0] == expected_channels:
+            pred = pred.transpose(1, 0)         # (N, 4 + C)
+        elif pred.shape[1] != expected_channels:
+            self.get_logger().error(f"Unerwartete YOLO-Output-Shape: {raw_out.shape}")
+            return []
 
         boxes_xywh = pred[:, :4]                # center x, center y, w, h (im 640er Frame)
         class_scores = pred[:, 4:]              # (N, C)
@@ -260,13 +309,20 @@ class YoloDetectorNode(Node):
                 padded, 1.0 / 255.0, (self.input_size, self.input_size),
                 swapRB=True, crop=False,
             )
-            self.net.setInput(blob)
-            raw_out = self.net.forward()
+            if self.backend == ONNXRUNTIME_BACKEND:
+                raw_outputs = self.net.run(None, {self.ort_input_name: blob.astype(np.float32, copy=False)})
+                raw_out = np.asarray(raw_outputs[0])
+            else:
+                self.net.setInput(blob)
+                raw_out = self.net.forward()
 
             detections = self._postprocess(
                 raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
             )
         except cv2.error as exc:
+            self.get_logger().error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
+            return
+        except Exception as exc:
             self.get_logger().error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
             return
 
