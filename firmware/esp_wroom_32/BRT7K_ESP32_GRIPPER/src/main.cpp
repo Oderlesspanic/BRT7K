@@ -99,6 +99,7 @@
 #define GRIP_R_MAX   6500
 #define LIFT_MIN        0
 #define LIFT_MAX    20000
+#define GRIP_CAL_OFFSET 1000 // empirisch ermittelter Offset, damit die Endpositionen nicht genau am mechanischen Ende liegen, sondern der Gripper leicht dagegen drückt für bessere Wiederholbarkeit
 
 // ═══════════════════════ PWM Config ═════════════════════════════
 
@@ -117,14 +118,16 @@ const int32_t POS_TOLERANCE = 100;
 
 // ═══════════════════════ Position Control Config ═════════════════
 
-const int32_t DECEL_ZONE    = 300;
-const int     POS_MAX_SPD   = 100;   // Normalgeschwindigkeit
-const int     POS_MIN_SPD   = 250;
+const int32_t DECEL_ZONE    = 1000;
+const int     POS_MAX_SPD   = 100;   // Normalgeschwindigkeit Greifer
+const int     POS_MIN_SPD   = 70;    // MIN für Greifer in Bremszone
+const int     LIFT_UP_SPD   = 220;   // Fixgeschwindigkeit Lift beim Heben (70-255)
 
 // Kraft-Erkennung → Geschwindigkeits-Boost
 // left_weight > +THRESHOLD oder right_weight < -THRESHOLD → Boost aktiv
-const int32_t FORCE_THRESHOLD = 50000;
-const int     FORCE_BOOST_SPD = 250;
+int32_t FORCE_THRESHOLD = 50000;   // einstellbar via /esp32_gripper/set_threshold   (10000-300000)
+int     FORCE_BOOST_SPD = 70;     // einstellbar via /esp32_gripper/set_force_boost  (70-255)
+const int     FORCE_BOOST_SPD_EMPTY = 130; // for empty mate (just to reach threshold)
 
 // GRIP_L: pos. Speed → Encoder sinkt → Dir -1; GRIP_R und LIFT: Dir +1
 const int8_t  posCtrlDir[3]    = { -1, 1, 1 };
@@ -218,6 +221,8 @@ rcl_publisher_t    diagnostics_pub;
 rcl_subscription_t cmd_sub;
 rcl_subscription_t manual_sub;
 rcl_subscription_t set_pos_sub;
+rcl_subscription_t set_threshold_sub;
+rcl_subscription_t set_force_boost_sub;
 
 std_msgs__msg__Bool                  is_closed_msg;
 std_msgs__msg__Empty                 heartbeat_msg;
@@ -228,6 +233,8 @@ std_msgs__msg__String                diagnostics_msg;
 std_msgs__msg__Float32               cmd_msg;
 std_msgs__msg__Int32                 manual_msg;
 std_msgs__msg__Int32                 set_pos_msg;
+std_msgs__msg__Int32                 set_threshold_msg;
+std_msgs__msg__Int32                 set_force_boost_msg;
 
 enum class AgentState : uint8_t { WAITING, CONNECTED };
 AgentState urosState = AgentState::WAITING;
@@ -365,6 +372,97 @@ void tareScales() {
     if (cnt[i] > 0) scaleOffsets[i] = (int32_t)(sum[i] / cnt[i]);
 }
 
+void calibrateGrippers() {
+  if (!tcaOk) return;
+
+  const int      CAL_SPEED      = 80;
+  const int      CAL_RETURN_SPD = 80;
+  const uint32_t CAL_TIMEOUT    = 6000;
+  const int32_t  CAL_THRESHOLD  = 40000;
+
+  // ── GripL: fahre in Schließrichtung (+speed, Encoder → GRIP_L_MIN) ──
+  if (leftScaleOk) {
+    setDiagnostics("INFO", "Kalibrierung GripL...");
+    uint32_t t = millis();
+    setMotor(MOTOR_GRIP_L, CAL_SPEED);
+    while (millis() - t < CAL_TIMEOUT) {
+      tcaSelect(CH_GRIP_L);
+      if (LeftGripperScale.available()) {
+        if (abs(LeftGripperScale.getReading() - scaleOffsets[1]) > CAL_THRESHOLD) break;
+      }
+      delay(20);
+    }
+    setMotor(MOTOR_GRIP_L, 0);
+    enc[MOTOR_GRIP_L].count = GRIP_L_MIN + GRIP_CAL_OFFSET;  // physikalisches Ende = -6500 + 500 -> that the gripper presses a bit against the mechanical endstop for better repeatability
+    delay(300);
+
+    // Zurück auf 0 (Öffnungsrichtung = negative Speed)
+    t = millis();
+    setMotor(MOTOR_GRIP_L, -CAL_RETURN_SPD);
+    while (millis() - t < CAL_TIMEOUT && enc[MOTOR_GRIP_L].count < GRIP_L_MAX)
+      delay(5);
+    setMotor(MOTOR_GRIP_L, 0);
+    enc[MOTOR_GRIP_L].count = 0;
+    setDiagnostics("INFO", "Kalibrierung GripL fertig");
+    delay(300);
+  }
+
+  // ── GripR: fahre in Schließrichtung (+speed, Encoder → GRIP_R_MAX) ──
+  if (rightScaleOk) {
+    setDiagnostics("INFO", "Kalibrierung GripR...");
+    uint32_t t = millis();
+    setMotor(MOTOR_GRIP_R, CAL_SPEED);
+    while (millis() - t < CAL_TIMEOUT) {
+      tcaSelect(CH_GRIP_R);
+      if (RightGripperScale.available()) {
+        if (abs(RightGripperScale.getReading() - scaleOffsets[2]) > CAL_THRESHOLD) break;
+      }
+      delay(20);
+    }
+    setMotor(MOTOR_GRIP_R, 0);
+    enc[MOTOR_GRIP_R].count = GRIP_R_MAX - GRIP_CAL_OFFSET;  // physikalisches Ende = +6500 - 500 -> that the gripper presses a bit against the mechanical endstop for better repeatability
+    delay(300);
+
+    // Zurück auf 0 (Öffnungsrichtung = negative Speed)
+    t = millis();
+    setMotor(MOTOR_GRIP_R, -CAL_RETURN_SPD);
+    while (millis() - t < CAL_TIMEOUT && enc[MOTOR_GRIP_R].count > GRIP_R_MIN)
+      delay(5);
+    setMotor(MOTOR_GRIP_R, 0);
+    enc[MOTOR_GRIP_R].count = 0;
+    setDiagnostics("INFO", "Kalibrierung GripR fertig");
+  }
+
+  // posCtrl auf Pos 0 aktivieren → Regler sofort bereit, kein manuelles "sende 0" nötig
+  posCtrl[MOTOR_GRIP_L] = { true, false, 0 };
+  posCtrl[MOTOR_GRIP_R] = { true, false, 0 };
+}
+
+// Lift-Kalibrierung: fährt nach UNTEN bis Wägezelle > 40000 oder Timeout,
+// setzt Encoder auf LIFT_MIN (0) = Heimposition. Optional aufrufen.
+void calibrateLift() {
+  const int      CAL_SPEED    = 100;
+  const uint32_t CAL_TIMEOUT  = 15000;
+  const int32_t  CAL_THRESHOLD = 50000;
+
+  setDiagnostics("INFO", "Kalibrierung Lift: fahre nach unten...");
+
+  uint32_t t = millis();
+  setMotor(MOTOR_LIFT, -CAL_SPEED);
+  while (millis() - t < CAL_TIMEOUT) {
+    if (liftScaleOk) {
+      tcaSelect(CH_LIFT);
+      if (LiftingScale.available()) {
+        if (abs(LiftingScale.getReading() - scaleOffsets[0]) > CAL_THRESHOLD) break;
+      }
+    }
+    delay(20);
+  }
+  setMotor(MOTOR_LIFT, 0);
+  enc[MOTOR_LIFT].count = LIFT_MIN;  // physikalisches Bodenende = 0
+  setDiagnostics("INFO", "Kalibrierung Lift fertig");
+}
+
 bool waitForTca() {
   for (int attempt = 0; attempt < 10; attempt++) {
     Wire.beginTransmission(TCAADDR);
@@ -458,11 +556,17 @@ void updatePositionControl() {
       continue;  // active bleibt true → hält Position
     }
     posCtrl[i].arrived = false;
-    int spd = boost
-      ? FORCE_BOOST_SPD
-      : ((abs(err) >= DECEL_ZONE)
+    int spd;
+    bool goingUp = (i == MOTOR_LIFT) && ((err * (int32_t)posCtrlDir[i]) > 0);
+    if (goingUp) {
+      spd = LIFT_UP_SPD;  // fixer Wert beim Heben — mehr Kraft
+    } else if (boost) {
+      spd = FORCE_BOOST_SPD;
+    } else {
+      spd = (abs(err) >= DECEL_ZONE)
           ? POS_MAX_SPD
-          : (int)map(abs(err), POS_TOLERANCE, DECEL_ZONE, POS_MIN_SPD, POS_MAX_SPD));
+          : (int)map(abs(err), POS_TOLERANCE, DECEL_ZONE, POS_MIN_SPD, POS_MAX_SPD);
+    }
     if ((err * (int32_t)posCtrlDir[i]) < 0) spd = -spd;
     setMotor(i, spd);
   }
@@ -592,6 +696,24 @@ void set_pos_callback(const void* msgin) {
   setDiagnostics("INFO", info);
 }
 
+void set_threshold_callback(const void* msgin) {
+  int32_t val = ((const std_msgs__msg__Int32*)msgin)->data;
+  val = constrain(val, 10000, 300000);
+  FORCE_THRESHOLD = val;
+  char info[56];
+  snprintf(info, sizeof(info), "FORCE_THRESHOLD → %ld", (long)val);
+  setDiagnostics("INFO", info);
+}
+
+void set_force_boost_callback(const void* msgin) {
+  int val = (int)((const std_msgs__msg__Int32*)msgin)->data;
+  val = constrain(val, 70, 255);
+  FORCE_BOOST_SPD = val;
+  char info[48];
+  snprintf(info, sizeof(info), "FORCE_BOOST_SPD → %d", val);
+  setDiagnostics("INFO", info);
+}
+
 // ═══════════════════════ micro-ROS Lifecycle ════════════════════
 
 void announceBoardRole() {
@@ -655,13 +777,27 @@ void createEntities() {
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
     "/esp32_gripper/set_pos");
 
-  rclc_executor_init(&executor, &support.context, 3, &allocator);
+  rclc_subscription_init_default(
+    &set_threshold_sub, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "/esp32_gripper/set_threshold");
+
+  rclc_subscription_init_default(
+    &set_force_boost_sub, &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "/esp32_gripper/set_force_boost");
+
+  rclc_executor_init(&executor, &support.context, 5, &allocator);
   rclc_executor_add_subscription(
-    &executor, &cmd_sub,    &cmd_msg,    &gripper_cmd_callback, ON_NEW_DATA);
+    &executor, &cmd_sub,            &cmd_msg,            &gripper_cmd_callback,    ON_NEW_DATA);
   rclc_executor_add_subscription(
-    &executor, &manual_sub, &manual_msg, &manual_cmd_callback,  ON_NEW_DATA);
+    &executor, &manual_sub,         &manual_msg,         &manual_cmd_callback,     ON_NEW_DATA);
   rclc_executor_add_subscription(
-    &executor, &set_pos_sub, &set_pos_msg, &set_pos_callback,   ON_NEW_DATA);
+    &executor, &set_pos_sub,        &set_pos_msg,        &set_pos_callback,        ON_NEW_DATA);
+  rclc_executor_add_subscription(
+    &executor, &set_threshold_sub,  &set_threshold_msg,  &set_threshold_callback,  ON_NEW_DATA);
+  rclc_executor_add_subscription(
+    &executor, &set_force_boost_sub,&set_force_boost_msg,&set_force_boost_callback,ON_NEW_DATA);
 
   is_closed_msg.data  = false;
   set_pos_msg.data    = 0;
@@ -680,9 +816,11 @@ void destroyEntities() {
   rcl_publisher_fini(&lift_weight_pub,  &node);
   rcl_publisher_fini(&left_weight_pub,  &node);
   rcl_publisher_fini(&right_weight_pub, &node);
-  rcl_subscription_fini(&cmd_sub,     &node);
-  rcl_subscription_fini(&manual_sub,  &node);
-  rcl_subscription_fini(&set_pos_sub, &node);
+  rcl_subscription_fini(&cmd_sub,             &node);
+  rcl_subscription_fini(&manual_sub,          &node);
+  rcl_subscription_fini(&set_pos_sub,         &node);
+  rcl_subscription_fini(&set_threshold_sub,   &node);
+  rcl_subscription_fini(&set_force_boost_sub, &node);
   rclc_executor_fini(&executor);
   rcl_node_fini(&node);
   rclc_support_fini(&support);
@@ -732,6 +870,11 @@ void setup() {
   rightScaleOk = initScale(RightGripperScale, CH_GRIP_R, "Rechts");
 
   tareScales();
+  calibrateGrippers();
+  delay(500);   // Wägezellen nach Kalibrierfahrt entspannen lassen
+  tareScales(); // Neu-Nullen damit forceDetected() nach Kalibrierung korrekt arbeitet
+  delay(1000);
+  calibrateLift();
 
   if (!tcaOk || !liftScaleOk || !leftScaleOk || !rightScaleOk) {
     setDiagnostics("WARN", "Hardware unvollstaendig, micro-ROS startet fuer Diagnose und Heartbeat");
