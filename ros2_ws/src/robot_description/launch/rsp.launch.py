@@ -37,8 +37,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        DeclareLaunchArgument("wheel_radius", default_value="0.03656"),
-        DeclareLaunchArgument("wheel_width", default_value="0.0171"),
-        DeclareLaunchArgument("wheel_y", default_value="0.1606"),
+        DeclareLaunchArgument("wheel_radius", default_value="0.03660"),
+        DeclareLaunchArgument("wheel_width", default_value="0.0200"),
+        DeclareLaunchArgument("wheel_y", default_value="0.1610"),
         robot_state_publisher_node
     ])

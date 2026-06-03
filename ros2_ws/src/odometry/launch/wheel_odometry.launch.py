@@ -8,8 +8,8 @@ def generate_launch_description():
     wheel_separation = LaunchConfiguration("wheel_separation")
 
     return LaunchDescription([
-        DeclareLaunchArgument("wheel_radius", default_value="0.03656"),
-        DeclareLaunchArgument("wheel_separation", default_value="0.3212"),
+        DeclareLaunchArgument("wheel_radius", default_value="0.03660"),
+        DeclareLaunchArgument("wheel_separation", default_value="0.3220"),
 
         Node(
             package="odometry",

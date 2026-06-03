@@ -9,7 +9,7 @@ wheel_odometry_node:
     odom_frame: "odom"
     base_frame: "base_link"
 
-    wheel_radius: 0.03656
-    wheel_separation: 0.3212
+    wheel_radius: 0.03660
+    wheel_separation: 0.3220
 
     publish_tf: false
