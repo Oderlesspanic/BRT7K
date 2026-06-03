@@ -46,8 +46,13 @@ private:
   int findNearestObject(
     const vision_msgs::msg::Detection3D & detection) const;
 
+  int findActiveObjectByClass(const std::string & class_name) const;
+
   std::string getClassName(
     const vision_msgs::msg::Detection3D & detection) const;
+
+  std::string canonicalObjectClass(const std::string & class_name) const;
+  bool isLimitedObjectClass(const std::string & class_name) const;
 
   void updateObject(
     ManagedObject & object,

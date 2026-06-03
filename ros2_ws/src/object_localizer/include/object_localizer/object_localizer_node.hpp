@@ -50,6 +50,9 @@ private:
   std::string getClassName(
     const vision_msgs::msg::Detection2D & detection) const;
 
+  std::string canonicalObjectClass(const std::string & class_name) const;
+  double getDetectionScore(const vision_msgs::msg::Detection2D & detection) const;
+
   ObjectConfig getObjectConfig(const std::string & class_name) const;
 
   void loadObjectConfigs();

@@ -78,6 +78,13 @@ void ObjectManagerNode::localizedObjectsCallback(
 
     if (index >= 0) {
       updateObject(objects_[index], detection);
+    } else if (isLimitedObjectClass(getClassName(detection))) {
+      const int class_index = findActiveObjectByClass(getClassName(detection));
+      if (class_index >= 0) {
+        updateObject(objects_[class_index], detection);
+      } else {
+        addObject(detection);
+      }
     } else {
       addObject(detection);
     }
@@ -109,8 +116,13 @@ void ObjectManagerNode::updateObjectPoseCallback(
   }
 
   if (object == nullptr && !request->object_name.empty()) {
+    const std::string request_class_name =
+      canonicalObjectClass(request->object_name);
     for (auto & candidate : objects_) {
-      if (candidate.class_name == request->object_name && !candidate.collected) {
+      if (
+        canonicalObjectClass(candidate.class_name) == request_class_name &&
+        !candidate.collected)
+      {
         object = &candidate;
         break;
       }
@@ -149,7 +161,7 @@ int ObjectManagerNode::findNearestObject(
       continue;
     }
 
-    if (objects_[i].class_name != class_name) {
+    if (canonicalObjectClass(objects_[i].class_name) != class_name) {
       continue;
     }
 
@@ -166,6 +178,23 @@ int ObjectManagerNode::findNearestObject(
   return -1;
 }
 
+int ObjectManagerNode::findActiveObjectByClass(const std::string & class_name) const
+{
+  const std::string canonical_class_name = canonicalObjectClass(class_name);
+
+  for (size_t i = 0; i < objects_.size(); ++i) {
+    if (objects_[i].collected) {
+      continue;
+    }
+
+    if (canonicalObjectClass(objects_[i].class_name) == canonical_class_name) {
+      return static_cast<int>(i);
+    }
+  }
+
+  return -1;
+}
+
 std::string ObjectManagerNode::getClassName(
   const vision_msgs::msg::Detection3D & detection) const
 {
@@ -173,7 +202,35 @@ std::string ObjectManagerNode::getClassName(
     return "unknown";
   }
 
-  return detection.results[0].hypothesis.class_id;
+  return canonicalObjectClass(detection.results[0].hypothesis.class_id);
+}
+
+std::string ObjectManagerNode::canonicalObjectClass(const std::string & class_name) const
+{
+  if (class_name == "dose" || class_name == "can") {
+    return "mate";
+  }
+
+  if (
+    class_name == "rubikcube" ||
+    class_name == "rubiks_cube" ||
+    class_name == "rubikscube" ||
+    class_name == "wurfel")
+  {
+    return "rubixcube";
+  }
+
+  return class_name;
+}
+
+bool ObjectManagerNode::isLimitedObjectClass(const std::string & class_name) const
+{
+  const std::string canonical_class_name = canonicalObjectClass(class_name);
+  return (
+    canonical_class_name == "ball" ||
+    canonical_class_name == "mate" ||
+    canonical_class_name == "rubixcube"
+  );
 }
 
 void ObjectManagerNode::updateObject(

@@ -1,6 +1,10 @@
 #include "object_localizer/object_localizer_node.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <map>
+#include <set>
+#include <vector>
 
 #include "cv_bridge/cv_bridge.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -168,8 +172,37 @@ void ObjectLocalizerNode::detectionsCallback(
   geometry_msgs::msg::PoseArray pose_array;
   pose_array.header = localized_msg.header;
 
+  const std::set<std::string> limited_classes = {
+    "ball",
+    "mate",
+    "rubixcube"
+  };
+  std::map<std::string, const vision_msgs::msg::Detection2D *> best_limited_detections;
+  std::vector<const vision_msgs::msg::Detection2D *> detections_to_localize;
+
   for (const auto & detection : msg->detections) {
-    const std::string class_name = getClassName(detection);
+    const std::string class_name = canonicalObjectClass(getClassName(detection));
+    if (limited_classes.count(class_name) == 0) {
+      detections_to_localize.push_back(&detection);
+      continue;
+    }
+
+    auto best_it = best_limited_detections.find(class_name);
+    if (
+      best_it == best_limited_detections.end() ||
+      getDetectionScore(detection) > getDetectionScore(*best_it->second))
+    {
+      best_limited_detections[class_name] = &detection;
+    }
+  }
+
+  for (const auto & best_detection : best_limited_detections) {
+    detections_to_localize.push_back(best_detection.second);
+  }
+
+  for (const auto * detection_ptr : detections_to_localize) {
+    const auto & detection = *detection_ptr;
+    const std::string class_name = canonicalObjectClass(getClassName(detection));
     const ObjectConfig object_config = getObjectConfig(class_name);
 
     cv::Point2d contact_pixel;
@@ -203,6 +236,9 @@ void ObjectLocalizerNode::detectionsCallback(
     det3d.bbox.size.z = object_config.size_z;
 
     det3d.results = detection.results;
+    if (!det3d.results.empty()) {
+      det3d.results[0].hypothesis.class_id = class_name;
+    }
 
     localized_msg.detections.push_back(det3d);
     pose_array.poses.push_back(pose_target.pose);
@@ -324,6 +360,35 @@ std::string ObjectLocalizerNode::getClassName(
   }
 
   return detection.results[0].hypothesis.class_id;
+}
+
+std::string ObjectLocalizerNode::canonicalObjectClass(
+  const std::string & class_name) const
+{
+  if (class_name == "dose" || class_name == "can") {
+    return "mate";
+  }
+
+  if (
+    class_name == "rubikcube" ||
+    class_name == "rubiks_cube" ||
+    class_name == "rubikscube" ||
+    class_name == "wurfel")
+  {
+    return "rubixcube";
+  }
+
+  return class_name;
+}
+
+double ObjectLocalizerNode::getDetectionScore(
+  const vision_msgs::msg::Detection2D & detection) const
+{
+  if (detection.results.empty()) {
+    return 0.0;
+  }
+
+  return detection.results[0].hypothesis.score;
 }
 
 ObjectConfig ObjectLocalizerNode::getObjectConfig(
