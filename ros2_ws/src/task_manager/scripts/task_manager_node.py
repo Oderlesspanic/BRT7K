@@ -77,10 +77,12 @@ from typing import Dict, List, Optional, Tuple
 
 import rclpy
 from rclpy.action import ActionClient
+from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from lifecycle_msgs.msg import Transition
 from lifecycle_msgs.srv import ChangeState, GetState
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import String
@@ -163,6 +165,11 @@ class TaskManagerNode(Node):
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._frontier_ready_pub = self.create_publisher(String, "~/frontier_ready", 10)
+        self._initial_pose_pub = self.create_publisher(
+            PoseWithCovarianceStamped,
+            "/initialpose",
+            10,
+        )
         self._command_sub = self.create_subscription(
             String,
             "~/command",
@@ -431,6 +438,8 @@ class TaskManagerNode(Node):
         self.get_logger().info("Map gespeichert; stoppe Map Saver")
         self._stop_target("map_saver")
 
+        initial_pose_tf = self._lookup_current_robot_pose_in_map()
+
         self.get_logger().info("Stoppe Mapping/SLAM/Frontier/Nav2-SLAM")
         if "frontier_explorer" in self._managed:
             self._stop_target("frontier_explorer")
@@ -442,6 +451,13 @@ class TaskManagerNode(Node):
         nav_success, nav_message = self._start_target("navigation")
         if nav_success:
             self.get_logger().info(nav_message)
+            if initial_pose_tf is not None:
+                self._publish_initial_pose_sequence(initial_pose_tf)
+            else:
+                self.get_logger().warn(
+                    "Keine map->base_link Pose vor SLAM-Stop gefunden; "
+                    "AMCL Initialpose muss manuell gesetzt werden"
+                )
         else:
             self.get_logger().error(nav_message)
 
@@ -919,6 +935,53 @@ class TaskManagerNode(Node):
             f"Timeout beim Warten auf TF {target_frame}->{source_frame}; "
             "navigation_slam/frontier_explorer werden nicht gestartet",
         )
+
+    def _lookup_current_robot_pose_in_map(self) -> Optional[TransformStamped]:
+        try:
+            return self._tf_buffer.lookup_transform(
+                "map",
+                "base_link",
+                rclpy.time.Time(),
+                timeout=Duration(seconds=2.0),
+            )
+        except Exception as exc:  # noqa: BLE001 - tf2 exception types vary by distro.
+            self.get_logger().warn(f"map->base_link Lookup fehlgeschlagen: {exc}")
+            return None
+
+    def _publish_initial_pose_sequence(self, transform: TransformStamped) -> None:
+        def publish_initial_pose() -> None:
+            success, message = self._wait_for_lifecycle_state(
+                "/amcl",
+                {"active"},
+                timeout_sec=60.0,
+            )
+            if success:
+                self.get_logger().info(message)
+            else:
+                self.get_logger().warn(message)
+
+            pose_msg = PoseWithCovarianceStamped()
+            pose_msg.header.frame_id = "map"
+            pose_msg.pose.pose.position.x = transform.transform.translation.x
+            pose_msg.pose.pose.position.y = transform.transform.translation.y
+            pose_msg.pose.pose.position.z = 0.0
+            pose_msg.pose.pose.orientation = transform.transform.rotation
+            pose_msg.pose.covariance[0] = 0.05
+            pose_msg.pose.covariance[7] = 0.05
+            pose_msg.pose.covariance[35] = 0.10
+
+            for _ in range(5):
+                pose_msg.header.stamp = self.get_clock().now().to_msg()
+                self._initial_pose_pub.publish(pose_msg)
+                time.sleep(0.5)
+
+            self.get_logger().info(
+                "AMCL Initialpose publiziert: "
+                f"x={pose_msg.pose.pose.position.x:.3f}, "
+                f"y={pose_msg.pose.pose.position.y:.3f}"
+            )
+
+        threading.Thread(target=publish_initial_pose, daemon=True).start()
 
     def _wait_for_action_server(
         self,
