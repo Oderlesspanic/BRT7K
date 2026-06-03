@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import sys
+from glob import glob
 from typing import Any, List, Tuple
 
 import cv2
@@ -161,9 +162,10 @@ class YoloDetectorNode(Node):
 
     def _load_model(self) -> None:
         requested_backend = self.backend
+        self.get_logger().info(f"Python fuer room_vision: {sys.executable}")
         if requested_backend in ("auto", ONNXRUNTIME_BACKEND):
             try:
-                import onnxruntime as ort  # type: ignore[import-not-found]
+                ort = self._import_onnxruntime()
 
                 session_options = ort.SessionOptions()
                 session_options.intra_op_num_threads = 1
@@ -215,6 +217,30 @@ class YoloDetectorNode(Node):
             self.backend = OPENCV_BACKEND
         except cv2.error as exc:
             raise RuntimeError(f"OpenCV-DNN konnte ONNX-Modell nicht laden: {self.model_path}: {exc}") from exc
+
+    @staticmethod
+    def _import_onnxruntime() -> Any:
+        try:
+            import onnxruntime as ort  # type: ignore[import-not-found]
+            return ort
+        except ImportError:
+            pass
+
+        fallback_patterns = [
+            os.path.join(os.path.expanduser("~"), ".platformio-venv", "lib", "python*", "site-packages"),
+            os.path.join(os.path.expanduser("~"), ".local", "lib", "python*", "site-packages"),
+        ]
+        for pattern in fallback_patterns:
+            for site_packages in glob(pattern):
+                if site_packages not in sys.path:
+                    sys.path.append(site_packages)
+                try:
+                    import onnxruntime as ort  # type: ignore[import-not-found]
+                    return ort
+                except ImportError:
+                    continue
+
+        raise ImportError("onnxruntime")
 
     def _letterbox(self, img: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
         """
@@ -434,10 +460,13 @@ def main(args: list | None = None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        if node is not None:
-            node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            if node is not None:
+                node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+        except (KeyboardInterrupt, Exception):
+            pass
 
 
 if __name__ == "__main__":
