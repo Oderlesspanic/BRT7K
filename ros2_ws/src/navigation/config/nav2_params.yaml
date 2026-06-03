@@ -151,7 +151,7 @@ local_costmap:
       update_frequency: 4.0
       publish_frequency: 2.0
       transform_tolerance: 0.5
-      always_send_full_costmap: false
+      always_send_full_costmap: true
 
       footprint: "[[-0.305, -0.20], [0.325, -0.20], [0.325, -0.11], [0.105, -0.11], [0.105, 0.11], [0.325, 0.11], [0.325, 0.20], [-0.305, 0.20]]"
       footprint_padding: 0.01
@@ -195,7 +195,7 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 0.5
       transform_tolerance: 0.5
-      always_send_full_costmap: false
+      always_send_full_costmap: true
 
       footprint: "[[-0.305, -0.20], [0.325, -0.20], [0.325, -0.11], [0.105, -0.11], [0.105, 0.11], [0.325, 0.11], [0.325, 0.20], [-0.305, 0.20]]"
       footprint_padding: 0.01
