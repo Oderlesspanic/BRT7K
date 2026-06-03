@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Robot Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260602-1">
+  <link rel="stylesheet" href="style.css?v=20260603-1">
 </head>
 <body>
 
@@ -40,8 +40,17 @@
       </div>
 
       <div class="service-panel">
-        <h3>Dienste</h3>
-        <div id="serviceControlList" class="service-control-list"></div>
+        <h3>Mapping</h3>
+        <div class="ready-row">
+          <span id="lamp_frontier_ready" class="lamp red"></span>
+          <strong id="frontierReadyText">Not ready</strong>
+        </div>
+        <div class="service-row vision-row">
+          <span class="service-name">Vision</span>
+          <span id="visionState" class="service-state stopped">stopped</span>
+          <button id="btnStartVision" type="button">Start</button>
+          <button id="btnStopVision" type="button" class="danger">Stop</button>
+        </div>
       </div>
     </div>
   </div>
@@ -61,8 +70,11 @@
   <div class="tile">
     <h2>Steuerung</h2>
 
-    <button id="btnStartMapping" class="start-mapping-button">
+    <button id="btnStartMapping" class="start-mapping-button" disabled>
       Start mapping
+    </button>
+    <button id="btnSaveMap" class="save-map-button">
+      Save map
     </button>
 
     <label for="speedSlider">Geschwindigkeit</label>
@@ -115,7 +127,7 @@
 </div>
 
 <script src="rosbridge_client.js?v=20260601-1"></script>
-<script src="app.js?v=20260602-4"></script>
+<script src="app.js?v=20260603-1"></script>
 
 </body>
 </html>

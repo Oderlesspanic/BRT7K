@@ -31,8 +31,5 @@ task_manager:
       - "navigation_debug:navigation:navigation_debug.launch.py"
       - "map_saver:mapping:map_saver.launch.py"
     start_all_targets:
-      - "description"
       - "web"
-      - "hardware"
-      - "vision"
-      - "odometry"
+      - "mapping"

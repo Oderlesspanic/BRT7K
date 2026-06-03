@@ -80,6 +80,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from lifecycle_msgs.msg import Transition
 from lifecycle_msgs.srv import ChangeState, GetState
+from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
@@ -131,12 +132,21 @@ class TaskManagerNode(Node):
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=True)
+        self._map_received_event = threading.Event()
+        self._frontier_ready = False
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
+        self._frontier_ready_pub = self.create_publisher(String, "~/frontier_ready", 10)
         self._command_sub = self.create_subscription(
             String,
             "~/command",
             self._handle_command,
+            10,
+        )
+        self._map_sub = self.create_subscription(
+            OccupancyGrid,
+            "/map",
+            self._handle_map,
             10,
         )
 
@@ -178,7 +188,10 @@ class TaskManagerNode(Node):
             "vision:robot_bringup:vision.launch.py",
             "odometry:robot_bringup:odometry.launch.py",
             "mapping:robot_bringup:mapping.launch.py",
+            "slam:mapping:mapping.launch.py",
+            "frontier_explorer:frontier_explorer:frontier_explorer.launch.py",
             "navigation:navigation:navigation.launch.py",
+            "navigation_slam:navigation:navigation_slam.launch.py",
             "map_saver:mapping:map_saver.launch.py",
         ]
 
@@ -200,11 +213,8 @@ class TaskManagerNode(Node):
 
     def _load_start_all_targets(self) -> List[str]:
         default_targets = [
-            "description",
             "web",
-            "hardware",
-            "vision",
-            "odometry",
+            "mapping",
         ]
         self.declare_parameter("start_all_targets", default_targets)
         configured_targets = [
@@ -263,7 +273,10 @@ class TaskManagerNode(Node):
         response: Trigger.Response,
     ) -> Trigger.Response:
         del request
-        results = [self._start_target(name)[1] for name in self._start_all_target_names]
+        results = [
+            self._execute_action("start", name)[1]
+            for name in self._start_all_target_names
+        ]
         response.success = True
         response.message = "\n".join(results)
         return response
@@ -383,7 +396,10 @@ class TaskManagerNode(Node):
     def _execute_action(self, action: str, target_name: str) -> Tuple[bool, str]:
         if target_name == "all":
             if action == "start":
-                messages = [self._start_target(name)[1] for name in self._start_all_target_names]
+                messages = [
+                    self._execute_action("start", name)[1]
+                    for name in self._start_all_target_names
+                ]
                 return True, "\n".join(messages)
             if action == "stop":
                 messages = [
@@ -393,7 +409,10 @@ class TaskManagerNode(Node):
             messages = [
                 self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))
             ]
-            messages.extend(self._start_target(name)[1] for name in self._start_all_target_names)
+            messages.extend(
+                self._execute_action("start", name)[1]
+                for name in self._start_all_target_names
+            )
             return True, "\n".join(messages)
 
         if target_name not in self._managed:
@@ -465,6 +484,9 @@ class TaskManagerNode(Node):
         return True, f"{target_name} gestartet: {' '.join(command)}\nLog: {log_path}"
 
     def _stop_target(self, target_name: str) -> Tuple[bool, str]:
+        if target_name in {"mapping", "slam", "navigation_slam", "frontier_explorer"}:
+            self._set_frontier_ready(False)
+
         managed = self._managed[target_name]
         process = managed.process
 
@@ -620,7 +642,10 @@ class TaskManagerNode(Node):
 
     def _start_mapping_with_prerequisites(self) -> Tuple[bool, str]:
         messages = []
-        for prerequisite in ("description", "hardware", "odometry"):
+        self._map_received_event.clear()
+        self._set_frontier_ready(False)
+
+        for prerequisite in ("description", "odometry"):
             if prerequisite not in self._managed:
                 continue
             success, message = self._start_target(prerequisite)
@@ -634,15 +659,53 @@ class TaskManagerNode(Node):
             return False, "\n".join(messages)
 
         threading.Thread(
-            target=self._activate_slam_sequence,
+            target=self._mapping_start_sequence,
             daemon=True,
         ).start()
         messages.append(
-            "slam_toolbox Aktivierung laeuft im Hintergrund; "
-            "navigation_slam/frontier_explorer bitte separat starten"
+            "Startfolge laeuft im Hintergrund: slam_toolbox aktivieren, "
+            "auf /map warten, navigation_slam starten, Frontier-Ready setzen"
         )
 
         return True, "\n".join(messages)
+
+    def _mapping_start_sequence(self) -> None:
+        success, message = self._activate_lifecycle_node(
+            "/slam_toolbox",
+            timeout_sec=180.0,
+        )
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
+        success, message = self._wait_for_map(timeout_sec=180.0)
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
+        if "navigation_slam" not in self._managed:
+            self.get_logger().error(
+                "Target 'navigation_slam' ist nicht im Taskmanager konfiguriert"
+            )
+            return
+
+        success, message = self._start_navigation_slam_target()
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
+        success, message = self._wait_for_frontier_ready(timeout_sec=180.0)
+        if success:
+            self.get_logger().info(message)
+            self._set_frontier_ready(True)
+        else:
+            self.get_logger().error(message)
 
     def _activate_lifecycle_node(
         self,
@@ -808,10 +871,43 @@ class TaskManagerNode(Node):
             "frontier_explorer wird nicht gestartet",
         )
 
+    def _wait_for_map(self, timeout_sec: float) -> Tuple[bool, str]:
+        if self._map_received_event.wait(timeout=timeout_sec):
+            return True, "/map wurde publiziert"
+
+        return False, "Timeout beim Warten auf /map; navigation_slam wird nicht gestartet"
+
+    def _wait_for_frontier_ready(self, timeout_sec: float) -> Tuple[bool, str]:
+        success, message = self._wait_for_action_server(
+            "/navigate_to_pose",
+            timeout_sec=timeout_sec,
+        )
+        if not success:
+            return False, message
+
+        return True, "Frontier Explorer ist startbereit"
+
+    def _handle_map(self, msg: OccupancyGrid) -> None:
+        del msg
+        self._map_received_event.set()
+
+    def _set_frontier_ready(self, ready: bool) -> None:
+        if self._frontier_ready == ready:
+            return
+
+        self._frontier_ready = ready
+        self._publish_frontier_ready()
+
     def _publish_status(self) -> None:
         msg = String()
         msg.data = self._status_text()
         self._status_pub.publish(msg)
+        self._publish_frontier_ready()
+
+    def _publish_frontier_ready(self) -> None:
+        msg = String()
+        msg.data = "ready" if self._frontier_ready else "not_ready"
+        self._frontier_ready_pub.publish(msg)
 
     def _status_text(self) -> str:
         lines = []
