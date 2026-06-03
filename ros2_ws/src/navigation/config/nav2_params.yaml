@@ -125,7 +125,7 @@ collision_monitor:
     polygons: ["StopZone"]
     StopZone:
       type: "circle"
-      radius: 0.40
+      radius: 0.34
       action_type: "stop"
       min_points: 4
       visualize: true
