@@ -12,7 +12,7 @@ imu_filter_madgwick:
     gain: 0.1
     zeta: 0.1
 
-    remove_gravity_vector: ture
+    remove_gravity_vector: true
 
     publish_debug_topics: false
     constant_dt: 0.0
