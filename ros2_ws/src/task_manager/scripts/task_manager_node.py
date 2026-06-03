@@ -76,10 +76,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
+from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from lifecycle_msgs.msg import Transition
 from lifecycle_msgs.srv import ChangeState, GetState
+from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -151,6 +153,11 @@ class TaskManagerNode(Node):
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=True)
+        self._navigate_to_pose_client = ActionClient(
+            self,
+            NavigateToPose,
+            "/navigate_to_pose",
+        )
         self._map_received_event = threading.Event()
         self._frontier_ready = False
 
@@ -705,6 +712,7 @@ class TaskManagerNode(Node):
         )
         if success:
             self.get_logger().info(message)
+            self._set_frontier_ready(True)
         else:
             self.get_logger().warn(message)
 
@@ -839,7 +847,7 @@ class TaskManagerNode(Node):
             return None
 
         future = client.call_async(GetState.Request())
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 20.0
         while rclpy.ok() and not future.done() and time.monotonic() < deadline:
             time.sleep(0.05)
 
@@ -917,6 +925,16 @@ class TaskManagerNode(Node):
         action_name: str,
         timeout_sec: float,
     ) -> Tuple[bool, str]:
+        if action_name == "/navigate_to_pose":
+            if self._navigate_to_pose_client.wait_for_server(timeout_sec=timeout_sec):
+                return True, f"Action Server {action_name} ist verfuegbar"
+
+            return (
+                False,
+                f"Timeout beim Warten auf Action Server {action_name}; "
+                "frontier_explorer wird nicht gestartet",
+            )
+
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             result = subprocess.run(
