@@ -76,10 +76,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
+from rclpy.action import ActionClient
+from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from lifecycle_msgs.msg import Transition
 from lifecycle_msgs.srv import ChangeState, GetState
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
+from nav2_msgs.action import NavigateToPose
+from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
@@ -109,6 +114,21 @@ class ManagedLaunch:
 
 
 class TaskManagerNode(Node):
+    START_ALL_DENYLIST = {
+        "vision",
+        "camera",
+        "corner_manager",
+        "object_manager",
+        "object_task_executor",
+        "room_vision",
+        "object_localizer",
+        "edge_color",
+        "navigation",
+        "navigation_debug",
+        "navigation_slam",
+        "frontier_explorer",
+        "map_saver",
+    }
     NAVIGATION_SLAM_LIFECYCLE_NODES = (
         "/controller_server",
         "/planner_server",
@@ -127,16 +147,39 @@ class TaskManagerNode(Node):
             target.name: ManagedLaunch(target) for target in self._targets
         }
         self._start_all_target_names = self._load_start_all_targets()
+        self._autostart_enabled = self._load_autostart_enabled()
+        self._autostart_delay_sec = self._load_autostart_delay()
+        self._autostart_done = False
+        self._autostart_timer = None
         self._log_dir = self._load_log_dir()
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=True)
+        self._navigate_to_pose_client = ActionClient(
+            self,
+            NavigateToPose,
+            "/navigate_to_pose",
+        )
+        self._map_received_event = threading.Event()
+        self._frontier_ready = False
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
+        self._frontier_ready_pub = self.create_publisher(String, "~/frontier_ready", 10)
+        self._initial_pose_pub = self.create_publisher(
+            PoseWithCovarianceStamped,
+            "/initialpose",
+            10,
+        )
         self._command_sub = self.create_subscription(
             String,
             "~/command",
             self._handle_command,
+            10,
+        )
+        self._map_sub = self.create_subscription(
+            OccupancyGrid,
+            "/map",
+            self._handle_map,
             10,
         )
 
@@ -164,6 +207,11 @@ class TaskManagerNode(Node):
             )
 
         self.create_timer(2.0, self._publish_status)
+        if self._autostart_enabled:
+            self._autostart_timer = self.create_timer(
+                self._autostart_delay_sec,
+                self._run_autostart_once,
+            )
 
         target_names = ", ".join(self._managed.keys())
         self.get_logger().info(
@@ -178,7 +226,10 @@ class TaskManagerNode(Node):
             "vision:robot_bringup:vision.launch.py",
             "odometry:robot_bringup:odometry.launch.py",
             "mapping:robot_bringup:mapping.launch.py",
+            "slam:mapping:mapping.launch.py",
+            "frontier_explorer:frontier_explorer:frontier_explorer.launch.py",
             "navigation:navigation:navigation.launch.py",
+            "navigation_slam:navigation:navigation_slam.launch.py",
             "map_saver:mapping:map_saver.launch.py",
         ]
 
@@ -200,20 +251,36 @@ class TaskManagerNode(Node):
 
     def _load_start_all_targets(self) -> List[str]:
         default_targets = [
-            "description",
             "web",
-            "hardware",
-            "vision",
-            "odometry",
+            "mapping",
         ]
         self.declare_parameter("start_all_targets", default_targets)
         configured_targets = [
             str(name) for name in self.get_parameter("start_all_targets").value
         ]
-        return [
-            name for name in configured_targets
-            if name in self._managed
-        ]
+        start_targets = []
+        for name in configured_targets:
+            if name not in self._managed:
+                continue
+
+            if name in self.START_ALL_DENYLIST:
+                self.get_logger().warn(
+                    f"Ignoriere '{name}' in start_all_targets; "
+                    "dieses Target wird nicht mit start_all gestartet"
+                )
+                continue
+
+            start_targets.append(name)
+
+        return start_targets
+
+    def _load_autostart_enabled(self) -> bool:
+        self.declare_parameter("autostart", False)
+        return bool(self.get_parameter("autostart").value)
+
+    def _load_autostart_delay(self) -> float:
+        self.declare_parameter("autostart_delay_sec", 3.0)
+        return max(0.1, float(self.get_parameter("autostart_delay_sec").value))
 
     def _load_log_dir(self) -> Path:
         default_log_dir = os.environ.get("BRT7K_TASK_LOG_DIR", "/tmp/brt7k-task-manager")
@@ -263,10 +330,38 @@ class TaskManagerNode(Node):
         response: Trigger.Response,
     ) -> Trigger.Response:
         del request
-        results = [self._start_target(name)[1] for name in self._start_all_target_names]
+        results = [
+            self._execute_action("start", name)[1]
+            for name in self._start_all_target_names
+        ]
         response.success = True
         response.message = "\n".join(results)
         return response
+
+    def _run_autostart_once(self) -> None:
+        if self._autostart_done:
+            return
+
+        self._autostart_done = True
+        if self._autostart_timer is not None:
+            self._autostart_timer.cancel()
+
+        threading.Thread(
+            target=self._autostart_sequence,
+            daemon=True,
+        ).start()
+
+    def _autostart_sequence(self) -> None:
+        self.get_logger().info(
+            "Autostart startet Targets: "
+            + ", ".join(self._start_all_target_names)
+        )
+        for target_name in self._start_all_target_names:
+            success, message = self._execute_action("start", target_name)
+            if success:
+                self.get_logger().info(message)
+            else:
+                self.get_logger().error(message)
 
     def _stop_all_service(
         self,
@@ -343,6 +438,8 @@ class TaskManagerNode(Node):
         self.get_logger().info("Map gespeichert; stoppe Map Saver")
         self._stop_target("map_saver")
 
+        initial_pose_tf = self._lookup_current_robot_pose_in_map()
+
         self.get_logger().info("Stoppe Mapping/SLAM/Frontier/Nav2-SLAM")
         if "frontier_explorer" in self._managed:
             self._stop_target("frontier_explorer")
@@ -354,6 +451,13 @@ class TaskManagerNode(Node):
         nav_success, nav_message = self._start_target("navigation")
         if nav_success:
             self.get_logger().info(nav_message)
+            if initial_pose_tf is not None:
+                self._publish_initial_pose_sequence(initial_pose_tf)
+            else:
+                self.get_logger().warn(
+                    "Keine map->base_link Pose vor SLAM-Stop gefunden; "
+                    "AMCL Initialpose muss manuell gesetzt werden"
+                )
         else:
             self.get_logger().error(nav_message)
 
@@ -383,7 +487,10 @@ class TaskManagerNode(Node):
     def _execute_action(self, action: str, target_name: str) -> Tuple[bool, str]:
         if target_name == "all":
             if action == "start":
-                messages = [self._start_target(name)[1] for name in self._start_all_target_names]
+                messages = [
+                    self._execute_action("start", name)[1]
+                    for name in self._start_all_target_names
+                ]
                 return True, "\n".join(messages)
             if action == "stop":
                 messages = [
@@ -393,7 +500,10 @@ class TaskManagerNode(Node):
             messages = [
                 self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))
             ]
-            messages.extend(self._start_target(name)[1] for name in self._start_all_target_names)
+            messages.extend(
+                self._execute_action("start", name)[1]
+                for name in self._start_all_target_names
+            )
             return True, "\n".join(messages)
 
         if target_name not in self._managed:
@@ -465,6 +575,9 @@ class TaskManagerNode(Node):
         return True, f"{target_name} gestartet: {' '.join(command)}\nLog: {log_path}"
 
     def _stop_target(self, target_name: str) -> Tuple[bool, str]:
+        if target_name in {"mapping", "slam", "navigation_slam", "frontier_explorer"}:
+            self._set_frontier_ready(False)
+
         managed = self._managed[target_name]
         process = managed.process
 
@@ -543,11 +656,11 @@ class TaskManagerNode(Node):
             return False, "\n".join(messages)
 
         threading.Thread(
-            target=self._activate_navigation_slam_sequence,
+            target=self._ensure_navigation_slam_ready_sequence,
             daemon=True,
         ).start()
         messages.append(
-            "navigation_slam Aktivierung laeuft im Hintergrund; "
+            "navigation_slam Ready-Check laeuft im Hintergrund; "
             "Status ueber /navigate_to_pose oder Lifecycle-Nodes pruefen"
         )
 
@@ -593,40 +706,52 @@ class TaskManagerNode(Node):
         else:
             self.get_logger().error(message)
 
-    def _activate_navigation_slam_sequence(self) -> None:
-        for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES:
-            success, message = self._activate_lifecycle_node(
-                node_name,
-                timeout_sec=90.0,
+    def _ensure_navigation_slam_ready_sequence(self) -> None:
+        success, message = self._wait_for_navigation_slam_active(timeout_sec=90.0)
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().warn(message)
+            self.get_logger().warn(
+                "Versuche navigation_slam Lifecycle-Nodes manuell zu aktivieren"
             )
-            if success:
-                self.get_logger().info(message)
-                continue
+            for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES:
+                success, message = self._activate_lifecycle_node(
+                    node_name,
+                    timeout_sec=90.0,
+                )
+                if success:
+                    self.get_logger().info(message)
+                    continue
 
-            self.get_logger().error(message)
-            self.get_logger().error(
-                f"navigation_slam Aktivierung abgebrochen bei {node_name}"
-            )
-            return
+                self.get_logger().error(message)
+                self.get_logger().error(
+                    f"navigation_slam Aktivierung abgebrochen bei {node_name}"
+                )
+                return
 
         success, message = self._wait_for_action_server(
             "/navigate_to_pose",
-            timeout_sec=30.0,
+            timeout_sec=90.0,
         )
         if success:
             self.get_logger().info(message)
+            self._set_frontier_ready(True)
         else:
             self.get_logger().warn(message)
 
     def _start_mapping_with_prerequisites(self) -> Tuple[bool, str]:
         messages = []
-        for prerequisite in ("description", "hardware", "odometry"):
+        self._map_received_event.clear()
+        self._set_frontier_ready(False)
+
+        for prerequisite in ("description", "odometry"):
             if prerequisite not in self._managed:
                 continue
             success, message = self._start_target(prerequisite)
             messages.append(message)
             if not success:
-                return False, "\n".join(messages)
+                self.get_logger().error(message)
 
         success, message = self._start_target("mapping")
         messages.append(message)
@@ -634,15 +759,53 @@ class TaskManagerNode(Node):
             return False, "\n".join(messages)
 
         threading.Thread(
-            target=self._activate_slam_sequence,
+            target=self._mapping_start_sequence,
             daemon=True,
         ).start()
         messages.append(
-            "slam_toolbox Aktivierung laeuft im Hintergrund; "
-            "navigation_slam/frontier_explorer bitte separat starten"
+            "Startfolge laeuft im Hintergrund: slam_toolbox aktivieren, "
+            "auf /map warten, navigation_slam starten, Frontier-Ready setzen"
         )
 
         return True, "\n".join(messages)
+
+    def _mapping_start_sequence(self) -> None:
+        success, message = self._activate_lifecycle_node(
+            "/slam_toolbox",
+            timeout_sec=180.0,
+        )
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
+        success, message = self._wait_for_map(timeout_sec=180.0)
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
+        if "navigation_slam" not in self._managed:
+            self.get_logger().error(
+                "Target 'navigation_slam' ist nicht im Taskmanager konfiguriert"
+            )
+            return
+
+        success, message = self._start_navigation_slam_target()
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
+        success, message = self._wait_for_frontier_ready(timeout_sec=180.0)
+        if success:
+            self.get_logger().info(message)
+            self._set_frontier_ready(True)
+        else:
+            self.get_logger().error(message)
 
     def _activate_lifecycle_node(
         self,
@@ -685,6 +848,39 @@ class TaskManagerNode(Node):
 
         return False, f"Timeout beim Aktivieren von {node_name}; letzter State: {last_state}"
 
+    def _wait_for_navigation_slam_active(self, timeout_sec: float) -> Tuple[bool, str]:
+        deadline = time.monotonic() + timeout_sec
+        last_states: Dict[str, Optional[str]] = {}
+
+        while time.monotonic() < deadline:
+            states = {
+                node_name: self._get_lifecycle_state(node_name)
+                for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES
+            }
+            if all(state == "active" for state in states.values()):
+                return True, "Alle navigation_slam Lifecycle-Nodes sind active"
+
+            changed_states = {
+                node_name: state
+                for node_name, state in states.items()
+                if last_states.get(node_name) != state
+            }
+            if changed_states:
+                state_text = ", ".join(
+                    f"{node_name}={state or 'missing'}"
+                    for node_name, state in states.items()
+                )
+                self.get_logger().info(f"navigation_slam Lifecycle-States: {state_text}")
+                last_states = states
+
+            time.sleep(1.0)
+
+        state_text = ", ".join(
+            f"{node_name}={state or 'missing'}"
+            for node_name, state in last_states.items()
+        )
+        return False, f"Timeout beim Warten auf navigation_slam active: {state_text}"
+
     def _wait_for_lifecycle_state(
         self,
         node_name: str,
@@ -708,7 +904,7 @@ class TaskManagerNode(Node):
             return None
 
         future = client.call_async(GetState.Request())
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 20.0
         while rclpy.ok() and not future.done() and time.monotonic() < deadline:
             time.sleep(0.05)
 
@@ -781,7 +977,78 @@ class TaskManagerNode(Node):
             "navigation_slam/frontier_explorer werden nicht gestartet",
         )
 
+    def _lookup_current_robot_pose_in_map(self) -> Optional[TransformStamped]:
+        try:
+            return self._tf_buffer.lookup_transform(
+                "map",
+                "base_link",
+                rclpy.time.Time(),
+                timeout=Duration(seconds=2.0),
+            )
+        except Exception as exc:  # noqa: BLE001 - tf2 exception types vary by distro.
+            self.get_logger().warn(f"map->base_link Lookup fehlgeschlagen: {exc}")
+            return None
+
+    def _publish_initial_pose_sequence(self, transform: TransformStamped) -> None:
+        def publish_initial_pose() -> None:
+            success, message = self._wait_for_lifecycle_state(
+                "/amcl",
+                {"active"},
+                timeout_sec=60.0,
+            )
+            if success:
+                self.get_logger().info(message)
+            else:
+                self.get_logger().warn(message)
+
+            pose_msg = PoseWithCovarianceStamped()
+            pose_msg.header.frame_id = "map"
+            pose_msg.pose.pose.position.x = transform.transform.translation.x
+            pose_msg.pose.pose.position.y = transform.transform.translation.y
+            pose_msg.pose.pose.position.z = 0.0
+            pose_msg.pose.pose.orientation = transform.transform.rotation
+            pose_msg.pose.covariance[0] = 0.05
+            pose_msg.pose.covariance[7] = 0.05
+            pose_msg.pose.covariance[35] = 0.10
+
+            for _ in range(5):
+                pose_msg.header.stamp = self.get_clock().now().to_msg()
+                self._initial_pose_pub.publish(pose_msg)
+                time.sleep(0.5)
+
+            self.get_logger().info(
+                "AMCL Initialpose publiziert: "
+                f"x={pose_msg.pose.pose.position.x:.3f}, "
+                f"y={pose_msg.pose.pose.position.y:.3f}"
+            )
+
+        threading.Thread(target=publish_initial_pose, daemon=True).start()
+
     def _wait_for_action_server(
+        self,
+        action_name: str,
+        timeout_sec: float,
+    ) -> Tuple[bool, str]:
+        if action_name == "/navigate_to_pose":
+            if self._navigate_to_pose_client.wait_for_server(timeout_sec=timeout_sec):
+                return True, f"Action Server {action_name} ist verfuegbar"
+
+            success, message = self._wait_for_action_server_via_cli(
+                action_name,
+                timeout_sec=10.0,
+            )
+            if success:
+                return True, message
+
+            return (
+                False,
+                f"Timeout beim Warten auf Action Server {action_name}; "
+                "frontier_explorer wird nicht gestartet",
+            )
+
+        return self._wait_for_action_server_via_cli(action_name, timeout_sec)
+
+    def _wait_for_action_server_via_cli(
         self,
         action_name: str,
         timeout_sec: float,
@@ -808,10 +1075,43 @@ class TaskManagerNode(Node):
             "frontier_explorer wird nicht gestartet",
         )
 
+    def _wait_for_map(self, timeout_sec: float) -> Tuple[bool, str]:
+        if self._map_received_event.wait(timeout=timeout_sec):
+            return True, "/map wurde publiziert"
+
+        return False, "Timeout beim Warten auf /map; navigation_slam wird nicht gestartet"
+
+    def _wait_for_frontier_ready(self, timeout_sec: float) -> Tuple[bool, str]:
+        success, message = self._wait_for_action_server(
+            "/navigate_to_pose",
+            timeout_sec=timeout_sec,
+        )
+        if not success:
+            return False, message
+
+        return True, "Frontier Explorer ist startbereit"
+
+    def _handle_map(self, msg: OccupancyGrid) -> None:
+        del msg
+        self._map_received_event.set()
+
+    def _set_frontier_ready(self, ready: bool) -> None:
+        if self._frontier_ready == ready:
+            return
+
+        self._frontier_ready = ready
+        self._publish_frontier_ready()
+
     def _publish_status(self) -> None:
         msg = String()
         msg.data = self._status_text()
         self._status_pub.publish(msg)
+        self._publish_frontier_ready()
+
+    def _publish_frontier_ready(self) -> None:
+        msg = String()
+        msg.data = "ready" if self._frontier_ready else "not_ready"
+        self._frontier_ready_pub.publish(msg)
 
     def _status_text(self) -> str:
         lines = []

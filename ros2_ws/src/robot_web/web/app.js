@@ -197,11 +197,13 @@ function setLamp(name, color) {
 
 let speedPercent = 30;
 let manualMode = true;
-let mappingActive = false;
+let frontierReady = false;
+let frontierExplorerActive = false;
 let mappingCompleted = false;
-let mappingStoppedByUser = false;
+let frontierStoppedByUser = false;
 
 const btnStartMapping = document.getElementById("btnStartMapping");
+const btnSaveMap = document.getElementById("btnSaveMap");
 const btnManual = document.getElementById("btnManual");
 const btnAuto = document.getElementById("btnAuto");
 const btnSendObjectCommand = document.getElementById("btnSendObjectCommand");
@@ -210,38 +212,23 @@ const btnGripClose = document.getElementById("btnGripClose");
 const btnLiftUp = document.getElementById("btnLiftUp");
 const btnLiftDown = document.getElementById("btnLiftDown");
 const btnGripperStop = document.getElementById("btnGripperStop");
-const serviceControlList = document.getElementById("serviceControlList");
-
-const TASK_MANAGER_TARGETS = [
-  { id: "description", label: "Description" },
-  { id: "hardware", label: "Hardware" },
-  { id: "odometry", label: "Odometry" },
-  { id: "slam", label: "SLAM" },
-  { id: "navigation_debug", label: "Nav Debug" },
-  { id: "navigation_slam", label: "Nav SLAM" },
-  { id: "frontier_explorer", label: "Frontier" },
-  { id: "vision", label: "Vision" }
-];
+const frontierReadyText = document.getElementById("frontierReadyText");
+const btnStartVision = document.getElementById("btnStartVision");
+const btnStopVision = document.getElementById("btnStopVision");
+const visionState = document.getElementById("visionState");
 
 const taskManagerServices = new Map();
-const taskManagerRows = new Map();
 const taskManagerStates = new Map();
-
-const startMappingService = new ROSLIB.Service({
-  ros: ros,
-  name: "/task_manager/start_mapping",
-  serviceType: "std_srvs/srv/Trigger"
-});
-
-const stopMappingService = new ROSLIB.Service({
-  ros: ros,
-  name: "/task_manager/stop_mapping",
-  serviceType: "std_srvs/srv/Trigger"
-});
 
 const cancelObjectTaskService = new ROSLIB.Service({
   ros: ros,
   name: "/object_task_executor/cancel_task",
+  serviceType: "std_srvs/srv/Trigger"
+});
+
+const finishMappingService = new ROSLIB.Service({
+  ros: ros,
+  name: "/task_manager/finish_mapping",
   serviceType: "std_srvs/srv/Trigger"
 });
 
@@ -251,6 +238,7 @@ function callTriggerService(service, timeoutMs = 15000) {
       resolve({
         result: false,
         success: false,
+        timedOut: true,
         message: "Keine Antwort vom Service"
       });
     }, timeoutMs);
@@ -260,6 +248,7 @@ function callTriggerService(service, timeoutMs = 15000) {
       resolve({
         result,
         success: Boolean(response && response.success),
+        timedOut: false,
         message: response ? response.message : ""
       });
     });
@@ -279,56 +268,34 @@ function getTaskManagerService(action, target) {
   return taskManagerServices.get(key);
 }
 
-function renderServiceControls() {
-  if (!serviceControlList) return;
+function taskManagerActionTimeout(action, target) {
+  if (action === "start" && ["mapping", "navigation_slam", "frontier_explorer"].includes(target)) {
+    return 300000;
+  }
+  if (target === "frontier_explorer") {
+    return 180000;
+  }
+  return 30000;
+}
 
-  serviceControlList.replaceChildren();
-
-  TASK_MANAGER_TARGETS.forEach((target) => {
-    const row = document.createElement("div");
-    row.className = "service-row";
-
-    const name = document.createElement("span");
-    name.className = "service-name";
-    name.textContent = target.label;
-
-    const state = document.createElement("span");
-    state.className = "service-state stopped";
-    state.textContent = "stopped";
-
-    const startButton = document.createElement("button");
-    startButton.type = "button";
-    startButton.textContent = "Start";
-
-    const stopButton = document.createElement("button");
-    stopButton.type = "button";
-    stopButton.textContent = "Stop";
-    stopButton.className = "danger";
-
-    startButton.addEventListener("click", () => runTaskManagerAction("start", target.id));
-    stopButton.addEventListener("click", () => runTaskManagerAction("stop", target.id));
-
-    row.append(name, state, startButton, stopButton);
-    serviceControlList.appendChild(row);
-    taskManagerRows.set(target.id, { row, state, startButton, stopButton });
-  });
+function isBackgroundStart(action, target) {
+  return action === "start" && ["mapping", "navigation_slam", "frontier_explorer"].includes(target);
 }
 
 async function runTaskManagerAction(action, target) {
-  const row = taskManagerRows.get(target);
-  if (row) {
-    row.startButton.disabled = true;
-    row.stopButton.disabled = true;
-    row.state.textContent = action === "start" ? "starting" : "stopping";
-    row.state.className = "service-state pending";
+  if (target === "vision") {
+    btnStartVision.disabled = true;
+    btnStopVision.disabled = true;
+    visionState.textContent = action === "start" ? "starting" : "stopping";
+    visionState.className = "service-state pending";
   }
 
   const response = await callTriggerService(
     getTaskManagerService(action, target),
-    target === "navigation_slam" || target === "navigation_debug" ? 90000 : 30000
+    taskManagerActionTimeout(action, target)
   );
 
-  if (!response.success) {
+  if (!response.success && !(response.timedOut && isBackgroundStart(action, target))) {
     alert(`${target} ${action} fehlgeschlagen: ${response.message}`);
   }
 
@@ -346,26 +313,22 @@ function parseTaskManagerStatus(statusText) {
 }
 
 function updateServiceControls() {
-  TASK_MANAGER_TARGETS.forEach((target) => {
-    const row = taskManagerRows.get(target.id);
-    if (!row) return;
+  const state = taskManagerStates.get("vision") || "unknown";
+  const running = state === "running";
+  const exited = state === "exited";
 
-    const state = taskManagerStates.get(target.id) || "unknown";
-    const running = state === "running";
-    const exited = state === "exited";
-
-    row.state.textContent = state;
-    row.state.className = `service-state ${running ? "running" : exited ? "exited" : "stopped"}`;
-    row.startButton.disabled = running;
-    row.stopButton.disabled = !running;
-  });
+  visionState.textContent = state;
+  visionState.className = `service-state ${running ? "running" : exited ? "exited" : "stopped"}`;
+  btnStartVision.disabled = running;
+  btnStopVision.disabled = !running;
 }
 
 function updateActionButtons() {
   const autoMode = !manualMode;
 
-  btnStartMapping.disabled = !autoMode || mappingActive || mappingCompleted;
-  btnStartMapping.classList.toggle("hidden", mappingActive || mappingCompleted);
+  btnStartMapping.disabled =
+    !autoMode || !frontierReady || frontierExplorerActive || mappingCompleted;
+  btnStartMapping.classList.toggle("hidden", frontierExplorerActive || mappingCompleted);
 
   btnSendObjectCommand.disabled = !autoMode;
 
@@ -375,19 +338,41 @@ function updateActionButtons() {
 }
 
 btnStartMapping.addEventListener("click", async () => {
-  if (manualMode || mappingActive || mappingCompleted) return;
+  if (manualMode || !frontierReady || frontierExplorerActive || mappingCompleted) return;
 
   btnStartMapping.disabled = true;
-  const response = await callTriggerService(startMappingService, 300000);
+  const response = await callTriggerService(
+    getTaskManagerService("start", "frontier_explorer"),
+    taskManagerActionTimeout("start", "frontier_explorer")
+  );
 
-  if (response.success) {
-    mappingActive = true;
-    mappingStoppedByUser = false;
+  if (response.success || response.timedOut) {
+    frontierExplorerActive = true;
+    frontierStoppedByUser = false;
   } else {
-    alert("Mapping konnte nicht gestartet werden: " + response.message);
+    alert("Frontier Explorer konnte nicht gestartet werden: " + response.message);
   }
 
   updateActionButtons();
+});
+
+btnSaveMap.addEventListener("click", async () => {
+  btnSaveMap.disabled = true;
+  const response = await callTriggerService(finishMappingService, 300000);
+
+  if (!response.success) {
+    alert("Map konnte nicht gespeichert werden: " + response.message);
+  }
+
+  btnSaveMap.disabled = false;
+});
+
+btnStartVision.addEventListener("click", () => {
+  runTaskManagerAction("start", "vision");
+});
+
+btnStopVision.addEventListener("click", () => {
+  runTaskManagerAction("stop", "vision");
 });
 
 const taskManagerStatusTopic = new ROSLIB.Topic({
@@ -400,22 +385,33 @@ taskManagerStatusTopic.subscribe((msg) => {
   parseTaskManagerStatus(msg.data);
   updateServiceControls();
 
-  const mappingRunning = /^mapping:\s+running\b/m.test(msg.data);
+  const frontierRunning = /^frontier_explorer:\s+running\b/m.test(msg.data);
 
-  if (mappingActive && !mappingRunning && !mappingStoppedByUser) {
+  if (frontierExplorerActive && !frontierRunning && !frontierStoppedByUser) {
     mappingCompleted = true;
   }
 
-  mappingActive = mappingRunning;
+  frontierExplorerActive = frontierRunning;
 
-  if (!mappingRunning && mappingStoppedByUser) {
-    mappingStoppedByUser = false;
+  if (!frontierRunning && frontierStoppedByUser) {
+    frontierStoppedByUser = false;
   }
 
   updateActionButtons();
 });
 
-renderServiceControls();
+const frontierReadyTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/task_manager/frontier_ready",
+  messageType: "std_msgs/String"
+});
+
+frontierReadyTopic.subscribe((msg) => {
+  frontierReady = msg.data === "ready";
+  setLamp("frontier_ready", frontierReady ? "green" : "red");
+  frontierReadyText.textContent = frontierReady ? "Ready" : "Not ready";
+  updateActionButtons();
+});
 
 const speedSlider = document.getElementById("speedSlider");
 const speedValue = document.getElementById("speedValue");
@@ -539,12 +535,14 @@ const modeTopic = new ROSLIB.Topic({
 });
 
 async function stopActiveWork() {
-  await callTriggerService(cancelObjectTaskService);
+  if (taskManagerStates.get("object_task_executor") === "running") {
+    await callTriggerService(cancelObjectTaskService);
+  }
 
-  if (mappingActive) {
-    mappingStoppedByUser = true;
-    await callTriggerService(stopMappingService);
-    mappingActive = false;
+  if (frontierExplorerActive) {
+    frontierStoppedByUser = true;
+    await callTriggerService(getTaskManagerService("stop", "frontier_explorer"));
+    frontierExplorerActive = false;
   }
 
   updateActionButtons();

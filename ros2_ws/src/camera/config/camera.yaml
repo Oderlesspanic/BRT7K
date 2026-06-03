@@ -5,7 +5,7 @@ camera_node:
     camera_info_topic: "/camera/camera_info"
     width: 640
     height: 480
-    fps: 30
+    fps: 3
 
     # Kamera-Intrinsics. 0.0 nutzt einfache Defaults basierend auf der Bildgroesse.
     fx: 0.0

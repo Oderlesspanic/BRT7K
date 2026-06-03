@@ -17,4 +17,4 @@ imu_filter_madgwick:
     publish_debug_topics: false
     constant_dt: 0.0
 
-    orientation_stddev: 0.05
+    orientation_stddev: 0.2

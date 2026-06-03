@@ -26,12 +26,6 @@ def generate_launch_description():
         "hardware.launch.py"
     )
 
-    vision_launch = os.path.join(
-        bringup_dir,
-        "launch",
-        "vision.launch.py"
-    )
-
     odometry_launch = os.path.join(
         bringup_dir,
         "launch",
@@ -50,10 +44,6 @@ def generate_launch_description():
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(hardware_launch)
-        ),
-
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(vision_launch)
         ),
 
         IncludeLaunchDescription(

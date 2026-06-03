@@ -1,5 +1,7 @@
 task_manager:
   ros__parameters:
+    autostart: true
+    autostart_delay_sec: 4.0
     launch_targets:
       - "description:robot_bringup:description.launch.py"
       - "web:robot_bringup:web.launch.py"
@@ -31,8 +33,5 @@ task_manager:
       - "navigation_debug:navigation:navigation_debug.launch.py"
       - "map_saver:mapping:map_saver.launch.py"
     start_all_targets:
-      - "description"
       - "web"
-      - "hardware"
-      - "vision"
-      - "odometry"
+      - "mapping"

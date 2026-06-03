@@ -14,6 +14,7 @@ Parameter (per ros2 param oder Launch-File ueberschreibbar):
     input_topic         : /camera/image_raw
     image_output_topic  : /room_vision/image_annotated
     detections_topic    : /room_vision/detections
+    publish_annotated   : false
     input_size          : 640
     confidence_threshold: 0.25
     nms_threshold       : 0.45
@@ -30,7 +31,9 @@ Abhaengigkeiten (package.xml / rosdep):
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
+import sys
+from glob import glob
+from typing import Any, List, Tuple
 
 import cv2
 import numpy as np
@@ -48,6 +51,9 @@ except ImportError:  # pragma: no cover
 
 
 DEFAULT_CLASS_NAMES = ["wurfel", "ball", "mate", "fhgr_logo"]
+OPENCV_BACKEND = "opencv"
+ONNXRUNTIME_BACKEND = "onnxruntime"
+DISABLED_BACKEND = "disabled"
 
 
 class YoloDetectorNode(Node):
@@ -60,6 +66,8 @@ class YoloDetectorNode(Node):
         self.declare_parameter("input_topic", "/camera/image_raw")
         self.declare_parameter("image_output_topic", "/room_vision/image_annotated")
         self.declare_parameter("detections_topic", "/room_vision/detections")
+        self.declare_parameter("publish_annotated", False)
+        self.declare_parameter("backend", "auto")
         self.declare_parameter("input_size", 640)
         self.declare_parameter("confidence_threshold", 0.25)
         self.declare_parameter("nms_threshold", 0.45)
@@ -70,20 +78,26 @@ class YoloDetectorNode(Node):
         self.conf_thres: float = float(self.get_parameter("confidence_threshold").value)
         self.nms_thres: float = float(self.get_parameter("nms_threshold").value)
         self.class_names: List[str] = list(self.get_parameter("class_names").value)
+        self.publish_annotated: bool = bool(self.get_parameter("publish_annotated").value)
+        self.backend: str = str(self.get_parameter("backend").value).strip().lower()
+        self.net: Any = None
+        self.ort_input_name: str = ""
+        self._last_inference_error_log_time = 0.0
 
         input_topic: str = self.get_parameter("input_topic").value
         image_out_topic: str = self.get_parameter("image_output_topic").value
         det_out_topic: str = self.get_parameter("detections_topic").value
 
         # ----- Modell laden ----------------------------------------------------------
+        cv2.setNumThreads(1)
+        self.model_path = self._resolve_model_path(self.model_path)
         if not os.path.isfile(self.model_path):
             raise FileNotFoundError(
                 f"ONNX-Modell nicht gefunden: {self.model_path}\n"
                 f"Tipp: Parameter 'model_path' setzen oder best.onnx nach "
                 f"<room_vision>/models/best.onnx legen."
             )
-        self.get_logger().info(f"Lade ONNX-Modell: {self.model_path}")
-        self.net = cv2.dnn.readNetFromONNX(self.model_path)
+        self._load_model()
 
         # Optional: CUDA aktivieren, wenn OpenCV mit CUDA kompiliert ist.
         # self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
@@ -99,13 +113,17 @@ class YoloDetectorNode(Node):
         self.sub_image = self.create_subscription(
             Image, input_topic, self._on_image, 10
         )
-        self.pub_image = self.create_publisher(Image, image_out_topic, 10)
+        self.pub_image = (
+            self.create_publisher(Image, image_out_topic, 10)
+            if self.publish_annotated else None
+        )
         self.pub_detections = self.create_publisher(Detection2DArray, det_out_topic, 10)
 
         self.get_logger().info(
             f"Subscribed:  {input_topic}\n"
-            f"Publishing:  {image_out_topic} (annotated)\n"
+            f"Publishing:  {image_out_topic} (annotated={self.publish_annotated})\n"
             f"             {det_out_topic} (Detection2DArray)\n"
+            f"Backend:     {self.backend}\n"
             f"Klassen:     {self.class_names}"
         )
 
@@ -123,6 +141,106 @@ class YoloDetectorNode(Node):
                 pass
         # Fallback: relativer Pfad, falls direkt aus Source gestartet wird.
         return os.path.join(os.path.dirname(__file__), "..", "models", "best.onnx")
+
+    @staticmethod
+    def _resolve_model_path(configured_path: str) -> str:
+        candidates = []
+        if configured_path:
+            candidates.append(configured_path)
+
+        package_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        candidates.extend([
+            os.path.join(package_dir, "models", "best.onnx"),
+            os.path.join(os.getcwd(), "src", "room_vision", "models", "best.onnx"),
+            os.path.join(os.path.expanduser("~"), "BRT7K", "ros2_ws", "src", "room_vision", "models", "best.onnx"),
+        ])
+
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+        return configured_path
+
+    def _load_model(self) -> None:
+        requested_backend = self.backend
+        self.get_logger().info(f"Python fuer room_vision: {sys.executable}")
+        if requested_backend in ("auto", ONNXRUNTIME_BACKEND):
+            try:
+                ort = self._import_onnxruntime()
+
+                session_options = ort.SessionOptions()
+                session_options.intra_op_num_threads = 1
+                session_options.inter_op_num_threads = 1
+                session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                self.net = ort.InferenceSession(
+                    self.model_path,
+                    sess_options=session_options,
+                    providers=["CPUExecutionProvider"],
+                )
+                self.ort_input_name = self.net.get_inputs()[0].name
+                self.backend = ONNXRUNTIME_BACKEND
+                self.get_logger().info(f"Lade ONNX-Modell mit onnxruntime: {self.model_path}")
+                return
+            except ImportError:
+                if requested_backend == ONNXRUNTIME_BACKEND:
+                    raise RuntimeError(
+                        "backend=onnxruntime gesetzt, aber Python-Modul 'onnxruntime' ist nicht installiert "
+                        f"(python: {sys.executable})"
+                    ) from None
+                self.backend = DISABLED_BACKEND
+                self.get_logger().error(
+                    "onnxruntime ist nicht installiert; YOLO bleibt deaktiviert. "
+                    f"Installiere es fuer diesen Python: {sys.executable} -m pip install onnxruntime"
+                )
+                return
+            except Exception as exc:
+                if requested_backend == ONNXRUNTIME_BACKEND:
+                    raise RuntimeError(f"ONNX Runtime konnte Modell nicht laden: {self.model_path}: {exc}") from exc
+                self.backend = DISABLED_BACKEND
+                self.get_logger().error(f"ONNX Runtime konnte Modell nicht laden; YOLO bleibt deaktiviert: {exc}")
+                return
+
+        if requested_backend not in (OPENCV_BACKEND,):
+            self.backend = DISABLED_BACKEND
+            self.get_logger().error(
+                f"Ungueltiger YOLO-Backend-Parameter '{requested_backend}'; "
+                "erlaubt sind auto, onnxruntime, opencv"
+            )
+            return
+
+        self.get_logger().warn(
+            "Nutze OpenCV-DNN nur explizit. OpenCV 4.6 ist mit dem aktuellen YOLO-ONNX "
+            "auf dem Roboter nicht kompatibel."
+        )
+        self.get_logger().info(f"Lade ONNX-Modell mit OpenCV-DNN: {self.model_path}")
+        try:
+            self.net = cv2.dnn.readNetFromONNX(self.model_path)
+            self.backend = OPENCV_BACKEND
+        except cv2.error as exc:
+            raise RuntimeError(f"OpenCV-DNN konnte ONNX-Modell nicht laden: {self.model_path}: {exc}") from exc
+
+    @staticmethod
+    def _import_onnxruntime() -> Any:
+        try:
+            import onnxruntime as ort  # type: ignore[import-not-found]
+            return ort
+        except ImportError:
+            pass
+
+        fallback_patterns = [
+            os.path.join(os.path.expanduser("~"), ".platformio-venv", "lib", "python*", "site-packages"),
+            os.path.join(os.path.expanduser("~"), ".local", "lib", "python*", "site-packages"),
+        ]
+        for pattern in fallback_patterns:
+            for site_packages in glob(pattern):
+                if site_packages not in sys.path:
+                    sys.path.append(site_packages)
+                try:
+                    import onnxruntime as ort  # type: ignore[import-not-found]
+                    return ort
+                except ImportError:
+                    continue
+
+        raise ImportError("onnxruntime")
 
     def _letterbox(self, img: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
         """
@@ -153,8 +271,17 @@ class YoloDetectorNode(Node):
         YOLOv8-Output: shape (1, 4 + num_classes, N) mit N = 8400 Anchors.
         Ergebnis: Liste von (x1, y1, x2, y2, score, class_id) in Original-Bildkoords.
         """
-        pred = raw_out[0]                       # (4 + C, N)
-        pred = pred.transpose(1, 0)             # (N, 4 + C)
+        pred = raw_out[0]
+        if pred.ndim != 2:
+            self.get_logger().error(f"Unerwartete YOLO-Output-Shape: {raw_out.shape}")
+            return []
+
+        expected_channels = 4 + len(self.class_names)
+        if pred.shape[0] == expected_channels:
+            pred = pred.transpose(1, 0)         # (N, 4 + C)
+        elif pred.shape[1] != expected_channels:
+            self.get_logger().error(f"Unerwartete YOLO-Output-Shape: {raw_out.shape}")
+            return []
 
         boxes_xywh = pred[:, :4]                # center x, center y, w, h (im 640er Frame)
         class_scores = pred[:, 4:]              # (N, C)
@@ -219,58 +346,72 @@ class YoloDetectorNode(Node):
     # Hauptcallback
     # -------------------------------------------------------------------------------
     def _on_image(self, msg: Image) -> None:
+        if self.backend == DISABLED_BACKEND or self.net is None:
+            return
+
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as exc:  # noqa: BLE001 — cv_bridge wirft diverse Subklassen
             self.get_logger().warning(f"cv_bridge konnte Bild nicht konvertieren: {exc}")
             return
 
-        padded, scale, pad_x, pad_y = self._letterbox(frame)
-        blob = cv2.dnn.blobFromImage(
-            padded, 1.0 / 255.0, (self.input_size, self.input_size),
-            swapRB=True, crop=False,
-        )
-        self.net.setInput(blob)
-        raw_out = self.net.forward()
+        try:
+            padded, scale, pad_x, pad_y = self._letterbox(frame)
+            blob = cv2.dnn.blobFromImage(
+                padded, 1.0 / 255.0, (self.input_size, self.input_size),
+                swapRB=True, crop=False,
+            )
+            if self.backend == ONNXRUNTIME_BACKEND:
+                raw_outputs = self.net.run(None, {self.ort_input_name: blob.astype(np.float32, copy=False)})
+                raw_out = np.asarray(raw_outputs[0])
+            else:
+                self.net.setInput(blob)
+                raw_out = self.net.forward()
 
-        detections = self._postprocess(
-            raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
-        )
+            detections = self._postprocess(
+                raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
+            )
+        except cv2.error as exc:
+            self._log_inference_error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
+            return
+        except Exception as exc:
+            self._log_inference_error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
+            return
 
-        # --- Detection2DArray zusammenbauen + Boxen zeichnen ----------------
+        # --- Detection2DArray zusammenbauen ---------------------------------
         det_array = Detection2DArray()
         det_array.header = msg.header  # gleicher frame_id/stamp wie die Kamera
 
-        annotated = frame.copy()
-        h, w = annotated.shape[:2]
+        annotated = frame.copy() if self.publish_annotated else None
+        h, w = frame.shape[:2]
         cx_img, cy_img = w // 2, h // 2
 
         for (x1, y1, x2, y2, score, cls_id) in detections:
             name = self._class_name(cls_id)
-            color = self.class_colors[cls_id % len(self.class_colors)]
-            color_bgr = (int(color[0]), int(color[1]), int(color[2]))
 
             obj_cx = (x1 + x2) // 2
             obj_cy = (y1 + y2) // 2
 
-            # Linie von Bildmitte zum Objektzentrum
-            cv2.line(annotated, (cx_img, cy_img), (obj_cx, obj_cy), (0, 255, 255), 2)
+            if annotated is not None:
+                color = self.class_colors[cls_id % len(self.class_colors)]
+                color_bgr = (int(color[0]), int(color[1]), int(color[2]))
 
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color_bgr, 2)
-            label = f"{name} {score:.2f} x={obj_cx} y={obj_cy}"
-            (tw, th), baseline = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
-            )
-            cv2.rectangle(
-                annotated,
-                (x1, max(0, y1 - th - baseline - 3)),
-                (x1 + tw + 2, y1),
-                color_bgr, thickness=-1,
-            )
-            cv2.putText(
-                annotated, label, (x1 + 1, max(th, y1 - 3)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
-            )
+                cv2.line(annotated, (cx_img, cy_img), (obj_cx, obj_cy), (0, 255, 255), 2)
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color_bgr, 2)
+                label = f"{name} {score:.2f} x={obj_cx} y={obj_cy}"
+                (tw, th), baseline = cv2.getTextSize(
+                    label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
+                )
+                cv2.rectangle(
+                    annotated,
+                    (x1, max(0, y1 - th - baseline - 3)),
+                    (x1 + tw + 2, y1),
+                    color_bgr, thickness=-1,
+                )
+                cv2.putText(
+                    annotated, label, (x1 + 1, max(th, y1 - 3)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
+                )
 
             det = Detection2D()
             det.header = msg.header
@@ -289,29 +430,43 @@ class YoloDetectorNode(Node):
 
             det_array.detections.append(det)
 
-        # Fadenkreuz zuletzt zeichnen (liegt ueber allem)
-        cv2.circle(annotated, (cx_img, cy_img), 6, (255, 255, 255), -1)
-        cv2.circle(annotated, (cx_img, cy_img), 7, (0, 0, 0), 1)
-        cv2.line(annotated, (cx_img - 25, cy_img), (cx_img + 25, cy_img), (255, 255, 255), 2)
-        cv2.line(annotated, (cx_img, cy_img - 25), (cx_img, cy_img + 25), (255, 255, 255), 2)
+        if annotated is not None:
+            cv2.circle(annotated, (cx_img, cy_img), 6, (255, 255, 255), -1)
+            cv2.circle(annotated, (cx_img, cy_img), 7, (0, 0, 0), 1)
+            cv2.line(annotated, (cx_img - 25, cy_img), (cx_img + 25, cy_img), (255, 255, 255), 2)
+            cv2.line(annotated, (cx_img, cy_img - 25), (cx_img, cy_img + 25), (255, 255, 255), 2)
 
         self.pub_detections.publish(det_array)
 
-        out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
-        out_msg.header = msg.header
-        self.pub_image.publish(out_msg)
+        if annotated is not None and self.pub_image is not None:
+            out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
+            out_msg.header = msg.header
+            self.pub_image.publish(out_msg)
+
+    def _log_inference_error(self, message: str) -> None:
+        now = self.get_clock().now().nanoseconds * 1.0e-9
+        if now - self._last_inference_error_log_time < 5.0:
+            return
+        self._last_inference_error_log_time = now
+        self.get_logger().error(message)
 
 
 def main(args: list | None = None) -> None:
     rclpy.init(args=args)
-    node = YoloDetectorNode()
+    node = None
     try:
+        node = YoloDetectorNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            if node is not None:
+                node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+        except (KeyboardInterrupt, Exception):
+            pass
 
 
 if __name__ == "__main__":

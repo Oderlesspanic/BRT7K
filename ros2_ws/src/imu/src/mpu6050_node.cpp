@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 #include <vector>
 
 MPU6050Node::MPU6050Node()
@@ -35,6 +36,8 @@ MPU6050Node::MPU6050Node()
         return;
     }
 
+    calibrate_startup_offsets();
+
     auto period = std::chrono::duration<double>(1.0 / config_.update_rate);
 
     timer_ = this->create_wall_timer(
@@ -61,6 +64,10 @@ void MPU6050Node::declare_parameters()
     this->declare_parameter<double>("gyro_offset_x", 0.0);
     this->declare_parameter<double>("gyro_offset_y", 0.0);
     this->declare_parameter<double>("gyro_offset_z", 0.0);
+
+    this->declare_parameter<bool>("gyro_auto_calibration", true);
+    this->declare_parameter<bool>("accel_auto_calibration", false);
+    this->declare_parameter<int>("calibration_samples", 100);
 
     this->declare_parameter<std::string>("frame_id", "imu_link");
     this->declare_parameter<double>("update_rate", 100.0);
@@ -102,6 +109,10 @@ MPU6050Config MPU6050Node::load_config()
     config.gyro_offset_y = this->get_parameter("gyro_offset_y").as_double();
     config.gyro_offset_z = this->get_parameter("gyro_offset_z").as_double();
 
+    config.gyro_auto_calibration = this->get_parameter("gyro_auto_calibration").as_bool();
+    config.accel_auto_calibration = this->get_parameter("accel_auto_calibration").as_bool();
+    config.calibration_samples = this->get_parameter("calibration_samples").as_int();
+
     config.frame_id = this->get_parameter("frame_id").as_string();
     config.update_rate = this->get_parameter("update_rate").as_double();
 
@@ -125,6 +136,86 @@ MPU6050Config MPU6050Node::load_config()
     }
 
     return config;
+}
+
+void MPU6050Node::calibrate_startup_offsets()
+{
+    if (!config_.gyro_auto_calibration && !config_.accel_auto_calibration)
+    {
+        return;
+    }
+
+    const int sample_count = std::max(10, config_.calibration_samples);
+    double accel_x_sum = 0.0;
+    double accel_y_sum = 0.0;
+    double accel_z_sum = 0.0;
+    double gyro_x_sum = 0.0;
+    double gyro_y_sum = 0.0;
+    double gyro_z_sum = 0.0;
+    int valid_samples = 0;
+
+    RCLCPP_INFO(
+        this->get_logger(),
+        "IMU Startkalibrierung: %d Samples, Roboter muss stillstehen",
+        sample_count
+    );
+
+    for (int i = 0; i < sample_count; ++i)
+    {
+        auto raw = driver_->read_imu();
+        if (!raw.has_value())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        accel_x_sum += accel_raw_to_ms2(raw->accel_x, config_.accel_scale);
+        accel_y_sum += accel_raw_to_ms2(raw->accel_y, config_.accel_scale);
+        accel_z_sum += accel_raw_to_ms2(raw->accel_z, config_.accel_scale);
+        gyro_x_sum += gyro_raw_to_rads(raw->gyro_x, config_.gyro_scale);
+        gyro_y_sum += gyro_raw_to_rads(raw->gyro_y, config_.gyro_scale);
+        gyro_z_sum += gyro_raw_to_rads(raw->gyro_z, config_.gyro_scale);
+        valid_samples++;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    if (valid_samples < std::max(5, sample_count / 2))
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "IMU Startkalibrierung abgebrochen: nur %d/%d gueltige Samples",
+            valid_samples,
+            sample_count
+        );
+        return;
+    }
+
+    if (config_.gyro_auto_calibration)
+    {
+        config_.gyro_offset_x = gyro_x_sum / valid_samples;
+        config_.gyro_offset_y = gyro_y_sum / valid_samples;
+        config_.gyro_offset_z = gyro_z_sum / valid_samples;
+    }
+
+    if (config_.accel_auto_calibration)
+    {
+        constexpr double gravity = 9.80665;
+        config_.accel_offset_x = accel_x_sum / valid_samples;
+        config_.accel_offset_y = accel_y_sum / valid_samples;
+        config_.accel_offset_z = (accel_z_sum / valid_samples) - gravity;
+    }
+
+    RCLCPP_INFO(
+        this->get_logger(),
+        "IMU Offsets: gyro=(%.5f, %.5f, %.5f), accel=(%.4f, %.4f, %.4f)",
+        config_.gyro_offset_x,
+        config_.gyro_offset_y,
+        config_.gyro_offset_z,
+        config_.accel_offset_x,
+        config_.accel_offset_y,
+        config_.accel_offset_z
+    );
 }
 
 void MPU6050Node::timer_callback()

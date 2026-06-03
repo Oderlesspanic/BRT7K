@@ -11,7 +11,7 @@ inline uint8_t clamp_to_u8(int value)
 }
 }
 
-void ImageConverter::yuv420_to_rgb(
+void ImageConverter::yuv420_to_bgr(
     const uint8_t* y_plane,
     const uint8_t* u_plane,
     const uint8_t* v_plane,
@@ -19,9 +19,9 @@ void ImageConverter::yuv420_to_rgb(
     int height,
     int y_stride,
     int uv_stride,
-    std::vector<uint8_t>& rgb_out)
+    std::vector<uint8_t>& bgr_out)
 {
-    rgb_out.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 3);
+    bgr_out.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 3);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -38,9 +38,9 @@ void ImageConverter::yuv420_to_rgb(
             const int B = (298 * C + 516 * D + 128) >> 8;
 
             const size_t idx = static_cast<size_t>(y * width + x) * 3;
-            rgb_out[idx + 0] = clamp_to_u8(R);
-            rgb_out[idx + 1] = clamp_to_u8(G);
-            rgb_out[idx + 2] = clamp_to_u8(B);
+            bgr_out[idx + 0] = clamp_to_u8(B);
+            bgr_out[idx + 1] = clamp_to_u8(G);
+            bgr_out[idx + 2] = clamp_to_u8(R);
         }
     }
 }

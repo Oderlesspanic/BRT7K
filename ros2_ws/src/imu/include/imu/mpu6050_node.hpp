@@ -17,6 +17,7 @@ public:
 private:
     void declare_parameters();
     MPU6050Config load_config();
+    void calibrate_startup_offsets();
     void timer_callback();
 
     MPU6050Config config_;
