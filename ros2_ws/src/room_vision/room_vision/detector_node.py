@@ -31,6 +31,7 @@ Abhaengigkeiten (package.xml / rosdep):
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any, List, Tuple
 
 import cv2
@@ -51,6 +52,7 @@ except ImportError:  # pragma: no cover
 DEFAULT_CLASS_NAMES = ["wurfel", "ball", "mate", "fhgr_logo"]
 OPENCV_BACKEND = "opencv"
 ONNXRUNTIME_BACKEND = "onnxruntime"
+DISABLED_BACKEND = "disabled"
 
 
 class YoloDetectorNode(Node):
@@ -79,6 +81,7 @@ class YoloDetectorNode(Node):
         self.backend: str = str(self.get_parameter("backend").value).strip().lower()
         self.net: Any = None
         self.ort_input_name: str = ""
+        self._last_inference_error_log_time = 0.0
 
         input_topic: str = self.get_parameter("input_topic").value
         image_out_topic: str = self.get_parameter("image_output_topic").value
@@ -178,14 +181,34 @@ class YoloDetectorNode(Node):
             except ImportError:
                 if requested_backend == ONNXRUNTIME_BACKEND:
                     raise RuntimeError(
-                        "backend=onnxruntime gesetzt, aber Python-Modul 'onnxruntime' ist nicht installiert"
+                        "backend=onnxruntime gesetzt, aber Python-Modul 'onnxruntime' ist nicht installiert "
+                        f"(python: {sys.executable})"
                     ) from None
-                self.get_logger().warn("onnxruntime ist nicht installiert; verwende OpenCV-DNN")
+                self.backend = DISABLED_BACKEND
+                self.get_logger().error(
+                    "onnxruntime ist nicht installiert; YOLO bleibt deaktiviert. "
+                    f"Installiere es fuer diesen Python: {sys.executable} -m pip install onnxruntime"
+                )
+                return
             except Exception as exc:
                 if requested_backend == ONNXRUNTIME_BACKEND:
                     raise RuntimeError(f"ONNX Runtime konnte Modell nicht laden: {self.model_path}: {exc}") from exc
-                self.get_logger().warn(f"ONNX Runtime konnte Modell nicht laden; verwende OpenCV-DNN: {exc}")
+                self.backend = DISABLED_BACKEND
+                self.get_logger().error(f"ONNX Runtime konnte Modell nicht laden; YOLO bleibt deaktiviert: {exc}")
+                return
 
+        if requested_backend not in (OPENCV_BACKEND,):
+            self.backend = DISABLED_BACKEND
+            self.get_logger().error(
+                f"Ungueltiger YOLO-Backend-Parameter '{requested_backend}'; "
+                "erlaubt sind auto, onnxruntime, opencv"
+            )
+            return
+
+        self.get_logger().warn(
+            "Nutze OpenCV-DNN nur explizit. OpenCV 4.6 ist mit dem aktuellen YOLO-ONNX "
+            "auf dem Roboter nicht kompatibel."
+        )
         self.get_logger().info(f"Lade ONNX-Modell mit OpenCV-DNN: {self.model_path}")
         try:
             self.net = cv2.dnn.readNetFromONNX(self.model_path)
@@ -297,6 +320,9 @@ class YoloDetectorNode(Node):
     # Hauptcallback
     # -------------------------------------------------------------------------------
     def _on_image(self, msg: Image) -> None:
+        if self.backend == DISABLED_BACKEND or self.net is None:
+            return
+
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as exc:  # noqa: BLE001 — cv_bridge wirft diverse Subklassen
@@ -320,10 +346,10 @@ class YoloDetectorNode(Node):
                 raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
             )
         except cv2.error as exc:
-            self.get_logger().error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
+            self._log_inference_error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
             return
         except Exception as exc:
-            self.get_logger().error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
+            self._log_inference_error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
             return
 
         # --- Detection2DArray zusammenbauen ---------------------------------
@@ -391,17 +417,27 @@ class YoloDetectorNode(Node):
             out_msg.header = msg.header
             self.pub_image.publish(out_msg)
 
+    def _log_inference_error(self, message: str) -> None:
+        now = self.get_clock().now().nanoseconds * 1.0e-9
+        if now - self._last_inference_error_log_time < 5.0:
+            return
+        self._last_inference_error_log_time = now
+        self.get_logger().error(message)
+
 
 def main(args: list | None = None) -> None:
     rclpy.init(args=args)
-    node = YoloDetectorNode()
+    node = None
     try:
+        node = YoloDetectorNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
