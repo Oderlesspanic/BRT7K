@@ -20,20 +20,22 @@ slam_toolbox:
 
     # Für kleine Arenen sinnvoll
     minimum_travel_distance: 0.15
-    minimum_travel_heading: 0.15
+    minimum_travel_heading: 0.20
 
-    do_loop_closing: true
+    # In der kleinen Arena haben falsche Loop-Closures die Karte sprunghaft gedreht.
+    # Erst stabil lokal mappen; Loop-Closing spaeter gezielt wieder aktivieren.
+    do_loop_closing: false
     loop_search_maximum_distance: 3.0
     loop_match_minimum_chain_size: 5
     loop_match_maximum_variance_coarse: 3.0
-    loop_match_minimum_response_coarse: 0.35
-    loop_match_minimum_response_fine: 0.45
+    loop_match_minimum_response_coarse: 0.55
+    loop_match_minimum_response_fine: 0.65
 
     # Scan Matching
     use_scan_matching: true
     use_scan_barycenter: true
-    link_match_minimum_response_fine: 0.1
-    link_scan_maximum_distance: 1.5
+    link_match_minimum_response_fine: 0.35
+    link_scan_maximum_distance: 1.0
 
     # Solver
     solver_plugin: solver_plugins::CeresSolver
