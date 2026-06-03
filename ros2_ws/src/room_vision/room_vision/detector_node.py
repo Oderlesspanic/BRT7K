@@ -79,6 +79,8 @@ class YoloDetectorNode(Node):
         det_out_topic: str = self.get_parameter("detections_topic").value
 
         # ----- Modell laden ----------------------------------------------------------
+        cv2.setNumThreads(1)
+        self.model_path = self._resolve_model_path(self.model_path)
         if not os.path.isfile(self.model_path):
             raise FileNotFoundError(
                 f"ONNX-Modell nicht gefunden: {self.model_path}\n"
@@ -86,7 +88,10 @@ class YoloDetectorNode(Node):
                 f"<room_vision>/models/best.onnx legen."
             )
         self.get_logger().info(f"Lade ONNX-Modell: {self.model_path}")
-        self.net = cv2.dnn.readNetFromONNX(self.model_path)
+        try:
+            self.net = cv2.dnn.readNetFromONNX(self.model_path)
+        except cv2.error as exc:
+            raise RuntimeError(f"ONNX-Modell konnte nicht geladen werden: {self.model_path}: {exc}") from exc
 
         # Optional: CUDA aktivieren, wenn OpenCV mit CUDA kompiliert ist.
         # self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
@@ -129,6 +134,24 @@ class YoloDetectorNode(Node):
                 pass
         # Fallback: relativer Pfad, falls direkt aus Source gestartet wird.
         return os.path.join(os.path.dirname(__file__), "..", "models", "best.onnx")
+
+    @staticmethod
+    def _resolve_model_path(configured_path: str) -> str:
+        candidates = []
+        if configured_path:
+            candidates.append(configured_path)
+
+        package_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        candidates.extend([
+            os.path.join(package_dir, "models", "best.onnx"),
+            os.path.join(os.getcwd(), "src", "room_vision", "models", "best.onnx"),
+            os.path.join(os.path.expanduser("~"), "BRT7K", "ros2_ws", "src", "room_vision", "models", "best.onnx"),
+        ])
+
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+        return configured_path
 
     def _letterbox(self, img: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
         """
@@ -231,17 +254,21 @@ class YoloDetectorNode(Node):
             self.get_logger().warning(f"cv_bridge konnte Bild nicht konvertieren: {exc}")
             return
 
-        padded, scale, pad_x, pad_y = self._letterbox(frame)
-        blob = cv2.dnn.blobFromImage(
-            padded, 1.0 / 255.0, (self.input_size, self.input_size),
-            swapRB=True, crop=False,
-        )
-        self.net.setInput(blob)
-        raw_out = self.net.forward()
+        try:
+            padded, scale, pad_x, pad_y = self._letterbox(frame)
+            blob = cv2.dnn.blobFromImage(
+                padded, 1.0 / 255.0, (self.input_size, self.input_size),
+                swapRB=True, crop=False,
+            )
+            self.net.setInput(blob)
+            raw_out = self.net.forward()
 
-        detections = self._postprocess(
-            raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
-        )
+            detections = self._postprocess(
+                raw_out, scale, pad_x, pad_y, orig_shape=frame.shape[:2]
+            )
+        except cv2.error as exc:
+            self.get_logger().error(f"YOLO-Inferenz fehlgeschlagen: {exc}")
+            return
 
         # --- Detection2DArray zusammenbauen ---------------------------------
         det_array = Detection2DArray()
