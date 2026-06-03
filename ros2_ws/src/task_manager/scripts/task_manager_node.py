@@ -787,6 +787,17 @@ class TaskManagerNode(Node):
             self.get_logger().error(message)
             return
 
+        success, message = self._wait_for_tf(
+            "map",
+            "base_link",
+            timeout_sec=120.0,
+        )
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().error(message)
+            return
+
         if "navigation_slam" not in self._managed:
             self.get_logger().error(
                 "Target 'navigation_slam' ist nicht im Taskmanager konfiguriert"
@@ -1012,7 +1023,7 @@ class TaskManagerNode(Node):
             pose_msg.pose.covariance[35] = 0.10
 
             for _ in range(5):
-                pose_msg.header.stamp = self.get_clock().now().to_msg()
+                pose_msg.header.stamp = rclpy.time.Time().to_msg()
                 self._initial_pose_pub.publish(pose_msg)
                 time.sleep(0.5)
 
