@@ -69,7 +69,7 @@
 #define WHEEL_BASE_M     0.3212f   // m, matches robot_description 2 * wheel_y
 #define MAX_CMD_LINEAR_MPS   0.10f
 #define MAX_CMD_ANGULAR_RADPS 0.25f
-#define ENCODER_STEPS_PER_REV 32768.0f
+#define ENCODER_STEPS_PER_REV 65536.0f  // 0–65535 per protocol = one full revolution
 #define ODOM_PUBLISH_MS 100
 
 // ─────────────────────────────────────────────
@@ -287,7 +287,7 @@ static bool motorReadMileage(Stream &port, uint8_t id, int32_t &laps, uint16_t &
   laps = (int32_t)raw_laps;
   position = ((uint16_t)r[6] << 8) | (uint16_t)r[7];
 
-  return position < (uint16_t)ENCODER_STEPS_PER_REV;
+  return true;  // any uint16_t 0–65535 is valid per protocol
 }
 
 static float normalizeAngle(float angle) {
