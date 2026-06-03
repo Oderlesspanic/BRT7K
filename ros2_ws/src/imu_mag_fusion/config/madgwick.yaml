@@ -1,7 +1,8 @@
 imu_filter_madgwick:
   ros__parameters:
-    use_mag: false
-    use_magnetic_field_msg: false
+    use_mag: true
+  
+    use_magnetic_field_msg: true
 
     publish_tf: false
     reverse_tf: false
