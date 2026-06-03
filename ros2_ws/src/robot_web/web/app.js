@@ -519,7 +519,9 @@ const modeTopic = new ROSLIB.Topic({
 });
 
 async function stopActiveWork() {
-  await callTriggerService(cancelObjectTaskService);
+  if (taskManagerStates.get("object_task_executor") === "running") {
+    await callTriggerService(cancelObjectTaskService);
+  }
 
   if (frontierExplorerActive) {
     frontierStoppedByUser = true;
