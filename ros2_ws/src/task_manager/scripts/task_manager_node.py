@@ -651,7 +651,7 @@ class TaskManagerNode(Node):
             success, message = self._start_target(prerequisite)
             messages.append(message)
             if not success:
-                return False, "\n".join(messages)
+                self.get_logger().error(message)
 
         success, message = self._start_target("mapping")
         messages.append(message)
