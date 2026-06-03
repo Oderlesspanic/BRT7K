@@ -34,8 +34,8 @@ slam_toolbox:
     # Scan Matching
     use_scan_matching: true
     use_scan_barycenter: true
-    link_match_minimum_response_fine: 0.35
-    link_scan_maximum_distance: 1.0
+    link_match_minimum_response_fine: 0.5
+    link_scan_maximum_distance: 1.5
 
     # Solver
     solver_plugin: solver_plugins::CeresSolver
