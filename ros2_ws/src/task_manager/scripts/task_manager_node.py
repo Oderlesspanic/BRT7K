@@ -656,11 +656,11 @@ class TaskManagerNode(Node):
             return False, "\n".join(messages)
 
         threading.Thread(
-            target=self._activate_navigation_slam_sequence,
+            target=self._ensure_navigation_slam_ready_sequence,
             daemon=True,
         ).start()
         messages.append(
-            "navigation_slam Aktivierung laeuft im Hintergrund; "
+            "navigation_slam Ready-Check laeuft im Hintergrund; "
             "Status ueber /navigate_to_pose oder Lifecycle-Nodes pruefen"
         )
 
@@ -706,25 +706,33 @@ class TaskManagerNode(Node):
         else:
             self.get_logger().error(message)
 
-    def _activate_navigation_slam_sequence(self) -> None:
-        for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES:
-            success, message = self._activate_lifecycle_node(
-                node_name,
-                timeout_sec=90.0,
+    def _ensure_navigation_slam_ready_sequence(self) -> None:
+        success, message = self._wait_for_navigation_slam_active(timeout_sec=90.0)
+        if success:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().warn(message)
+            self.get_logger().warn(
+                "Versuche navigation_slam Lifecycle-Nodes manuell zu aktivieren"
             )
-            if success:
-                self.get_logger().info(message)
-                continue
+            for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES:
+                success, message = self._activate_lifecycle_node(
+                    node_name,
+                    timeout_sec=90.0,
+                )
+                if success:
+                    self.get_logger().info(message)
+                    continue
 
-            self.get_logger().error(message)
-            self.get_logger().error(
-                f"navigation_slam Aktivierung abgebrochen bei {node_name}"
-            )
-            return
+                self.get_logger().error(message)
+                self.get_logger().error(
+                    f"navigation_slam Aktivierung abgebrochen bei {node_name}"
+                )
+                return
 
         success, message = self._wait_for_action_server(
             "/navigate_to_pose",
-            timeout_sec=30.0,
+            timeout_sec=90.0,
         )
         if success:
             self.get_logger().info(message)
@@ -839,6 +847,39 @@ class TaskManagerNode(Node):
             time.sleep(1.0)
 
         return False, f"Timeout beim Aktivieren von {node_name}; letzter State: {last_state}"
+
+    def _wait_for_navigation_slam_active(self, timeout_sec: float) -> Tuple[bool, str]:
+        deadline = time.monotonic() + timeout_sec
+        last_states: Dict[str, Optional[str]] = {}
+
+        while time.monotonic() < deadline:
+            states = {
+                node_name: self._get_lifecycle_state(node_name)
+                for node_name in self.NAVIGATION_SLAM_LIFECYCLE_NODES
+            }
+            if all(state == "active" for state in states.values()):
+                return True, "Alle navigation_slam Lifecycle-Nodes sind active"
+
+            changed_states = {
+                node_name: state
+                for node_name, state in states.items()
+                if last_states.get(node_name) != state
+            }
+            if changed_states:
+                state_text = ", ".join(
+                    f"{node_name}={state or 'missing'}"
+                    for node_name, state in states.items()
+                )
+                self.get_logger().info(f"navigation_slam Lifecycle-States: {state_text}")
+                last_states = states
+
+            time.sleep(1.0)
+
+        state_text = ", ".join(
+            f"{node_name}={state or 'missing'}"
+            for node_name, state in last_states.items()
+        )
+        return False, f"Timeout beim Warten auf navigation_slam active: {state_text}"
 
     def _wait_for_lifecycle_state(
         self,
@@ -992,12 +1033,26 @@ class TaskManagerNode(Node):
             if self._navigate_to_pose_client.wait_for_server(timeout_sec=timeout_sec):
                 return True, f"Action Server {action_name} ist verfuegbar"
 
+            success, message = self._wait_for_action_server_via_cli(
+                action_name,
+                timeout_sec=10.0,
+            )
+            if success:
+                return True, message
+
             return (
                 False,
                 f"Timeout beim Warten auf Action Server {action_name}; "
                 "frontier_explorer wird nicht gestartet",
             )
 
+        return self._wait_for_action_server_via_cli(action_name, timeout_sec)
+
+    def _wait_for_action_server_via_cli(
+        self,
+        action_name: str,
+        timeout_sec: float,
+    ) -> Tuple[bool, str]:
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             result = subprocess.run(

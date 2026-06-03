@@ -238,6 +238,7 @@ function callTriggerService(service, timeoutMs = 15000) {
       resolve({
         result: false,
         success: false,
+        timedOut: true,
         message: "Keine Antwort vom Service"
       });
     }, timeoutMs);
@@ -247,6 +248,7 @@ function callTriggerService(service, timeoutMs = 15000) {
       resolve({
         result,
         success: Boolean(response && response.success),
+        timedOut: false,
         message: response ? response.message : ""
       });
     });
@@ -266,6 +268,20 @@ function getTaskManagerService(action, target) {
   return taskManagerServices.get(key);
 }
 
+function taskManagerActionTimeout(action, target) {
+  if (action === "start" && ["mapping", "navigation_slam", "frontier_explorer"].includes(target)) {
+    return 300000;
+  }
+  if (target === "frontier_explorer") {
+    return 180000;
+  }
+  return 30000;
+}
+
+function isBackgroundStart(action, target) {
+  return action === "start" && ["mapping", "navigation_slam", "frontier_explorer"].includes(target);
+}
+
 async function runTaskManagerAction(action, target) {
   if (target === "vision") {
     btnStartVision.disabled = true;
@@ -276,10 +292,10 @@ async function runTaskManagerAction(action, target) {
 
   const response = await callTriggerService(
     getTaskManagerService(action, target),
-    target === "frontier_explorer" ? 180000 : 30000
+    taskManagerActionTimeout(action, target)
   );
 
-  if (!response.success) {
+  if (!response.success && !(response.timedOut && isBackgroundStart(action, target))) {
     alert(`${target} ${action} fehlgeschlagen: ${response.message}`);
   }
 
@@ -327,10 +343,10 @@ btnStartMapping.addEventListener("click", async () => {
   btnStartMapping.disabled = true;
   const response = await callTriggerService(
     getTaskManagerService("start", "frontier_explorer"),
-    180000
+    taskManagerActionTimeout("start", "frontier_explorer")
   );
 
-  if (response.success) {
+  if (response.success || response.timedOut) {
     frontierExplorerActive = true;
     frontierStoppedByUser = false;
   } else {
