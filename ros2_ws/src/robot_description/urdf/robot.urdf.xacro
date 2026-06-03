@@ -5,9 +5,9 @@
        Parameter
   ========================== -->
 
-  <xacro:arg name="wheel_radius" default="0.03656"/> 
-  <xacro:arg name="wheel_width" default="0.0171"/> 
-  <xacro:arg name="wheel_y" default="0.1606"/> 
+  <xacro:arg name="wheel_radius" default="0.03660"/> 
+  <xacro:arg name="wheel_width" default="0.0200"/> 
+  <xacro:arg name="wheel_y" default="0.2110"/> 
 
   <xacro:arg name="gripper_x" default="0.3"/>
   <xacro:arg name="gripper_y" default="0.2"/>
@@ -22,7 +22,7 @@
   <xacro:property name="wheel_width"  value="$(arg wheel_width)"/>
   <xacro:property name="wheel_x"      value="0.0"/>   
   <xacro:property name="wheel_y"      value="$(arg wheel_y)"/>
-  <xacro:property name="wheel_z"      value="0.0252"/> 
+  <xacro:property name="wheel_z"      value="0.0"/> 
 
   <xacro:property name="gripper_x" value="$(arg gripper_x)"/>
   <xacro:property name="gripper_y" value="$(arg gripper_y)"/>
