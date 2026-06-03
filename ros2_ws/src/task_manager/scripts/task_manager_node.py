@@ -128,6 +128,10 @@ class TaskManagerNode(Node):
             target.name: ManagedLaunch(target) for target in self._targets
         }
         self._start_all_target_names = self._load_start_all_targets()
+        self._autostart_enabled = self._load_autostart_enabled()
+        self._autostart_delay_sec = self._load_autostart_delay()
+        self._autostart_done = False
+        self._autostart_timer = None
         self._log_dir = self._load_log_dir()
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._tf_buffer = Buffer()
@@ -174,6 +178,11 @@ class TaskManagerNode(Node):
             )
 
         self.create_timer(2.0, self._publish_status)
+        if self._autostart_enabled:
+            self._autostart_timer = self.create_timer(
+                self._autostart_delay_sec,
+                self._run_autostart_once,
+            )
 
         target_names = ", ".join(self._managed.keys())
         self.get_logger().info(
@@ -224,6 +233,14 @@ class TaskManagerNode(Node):
             name for name in configured_targets
             if name in self._managed
         ]
+
+    def _load_autostart_enabled(self) -> bool:
+        self.declare_parameter("autostart", False)
+        return bool(self.get_parameter("autostart").value)
+
+    def _load_autostart_delay(self) -> float:
+        self.declare_parameter("autostart_delay_sec", 3.0)
+        return max(0.1, float(self.get_parameter("autostart_delay_sec").value))
 
     def _load_log_dir(self) -> Path:
         default_log_dir = os.environ.get("BRT7K_TASK_LOG_DIR", "/tmp/brt7k-task-manager")
@@ -280,6 +297,31 @@ class TaskManagerNode(Node):
         response.success = True
         response.message = "\n".join(results)
         return response
+
+    def _run_autostart_once(self) -> None:
+        if self._autostart_done:
+            return
+
+        self._autostart_done = True
+        if self._autostart_timer is not None:
+            self._autostart_timer.cancel()
+
+        threading.Thread(
+            target=self._autostart_sequence,
+            daemon=True,
+        ).start()
+
+    def _autostart_sequence(self) -> None:
+        self.get_logger().info(
+            "Autostart startet Targets: "
+            + ", ".join(self._start_all_target_names)
+        )
+        for target_name in self._start_all_target_names:
+            success, message = self._execute_action("start", target_name)
+            if success:
+                self.get_logger().info(message)
+            else:
+                self.get_logger().error(message)
 
     def _stop_all_service(
         self,
