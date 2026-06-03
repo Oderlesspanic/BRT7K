@@ -134,6 +134,16 @@ class TaskManagerNode(Node):
         "frontier_explorer",
         "map_saver",
     }
+    LOW_PRIORITY_TARGETS = {
+        "vision",
+        "camera",
+        "corner_manager",
+        "object_manager",
+        "object_task_executor",
+        "room_vision",
+        "object_localizer",
+        "edge_color",
+    }
     NAVIGATION_SLAM_LIFECYCLE_NODES = (
         "/controller_server",
         "/planner_server",
@@ -577,30 +587,85 @@ class TaskManagerNode(Node):
         if "mapping" not in self._managed:
             return False, "Target 'mapping' ist nicht im Taskmanager konfiguriert"
 
-        success, message = self._start_target("map_saver")
-        if not success:
-            return False, message
+        self._prepare_stable_map_save()
+        paused_measurements = self._set_slam_measurements_paused(True)
 
-        self.get_logger().info(message)
+        try:
+            success, message = self._start_target("map_saver")
+            if not success:
+                return False, message
 
-        map_saver = self._managed["map_saver"]
-        deadline = time.monotonic() + timeout_sec
-        while map_saver.is_running() and time.monotonic() < deadline:
-            time.sleep(0.5)
+            self.get_logger().info(message)
 
-        if map_saver.is_running():
-            return False, "Map saver Timeout; Mapping bleibt aktiv"
+            map_saver = self._managed["map_saver"]
+            deadline = time.monotonic() + timeout_sec
+            while map_saver.is_running() and time.monotonic() < deadline:
+                time.sleep(0.5)
 
-        return_code = map_saver.returncode()
-        if return_code not in (0, None):
-            return (
-                False,
-                f"Map saver fehlgeschlagen mit Returncode {return_code}; Mapping bleibt aktiv",
+            if map_saver.is_running():
+                return False, "Map saver Timeout; Mapping bleibt aktiv"
+
+            return_code = map_saver.returncode()
+            if return_code not in (0, None):
+                return (
+                    False,
+                    f"Map saver fehlgeschlagen mit Returncode {return_code}; Mapping bleibt aktiv",
+                )
+
+            self.get_logger().info("Map gespeichert; stoppe Map Saver")
+            self._stop_target("map_saver")
+            return True, "Map gespeichert"
+        finally:
+            if paused_measurements:
+                self._set_slam_measurements_paused(False)
+
+    def _prepare_stable_map_save(self) -> None:
+        if self._is_target_running("frontier_explorer"):
+            success, message = self._stop_target("frontier_explorer")
+            if success:
+                self.get_logger().info("Frontier vor Map-Save gestoppt: " + message)
+            else:
+                self.get_logger().warn("Frontier konnte vor Map-Save nicht gestoppt werden: " + message)
+
+        self._cancel_navigate_to_pose_goals()
+        self._publish_zero_velocity_burst()
+        time.sleep(2.0)
+
+    def _set_slam_measurements_paused(self, paused: bool) -> bool:
+        command = [
+            "ros2",
+            "service",
+            "call",
+            "/slam_toolbox/pause_new_measurements",
+            "slam_toolbox/srv/Pause",
+            "{pause: " + ("true" if paused else "false") + "}",
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=5.0,
+                check=False,
             )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.get_logger().warn(
+                f"slam_toolbox pause_new_measurements nicht verfuegbar: {exc}"
+            )
+            return False
 
-        self.get_logger().info("Map gespeichert; stoppe Map Saver")
-        self._stop_target("map_saver")
-        return True, "Map gespeichert"
+        if result.returncode != 0:
+            self.get_logger().warn(
+                "slam_toolbox pause_new_measurements fehlgeschlagen: "
+                + (result.stdout or "").strip()
+            )
+            return False
+
+        state = "pausiert" if paused else "fortgesetzt"
+        self.get_logger().info(f"slam_toolbox Messungen {state}")
+        return True
 
     def _handle_command(self, msg: String) -> None:
         command = msg.data.strip().lower()
@@ -684,6 +749,9 @@ class TaskManagerNode(Node):
             managed.target.launch_file,
             *managed.target.arguments,
         ]
+        if target_name in self.LOW_PRIORITY_TARGETS:
+            command = ["nice", "-n", "10", *command]
+
         log_path = self._log_dir / f"{target_name}.log"
         managed.log_path = log_path
 
@@ -755,6 +823,10 @@ class TaskManagerNode(Node):
             managed.process = None
 
         return True, f"{target_name} beendet"
+
+    def _is_target_running(self, target_name: str) -> bool:
+        managed = self._managed.get(target_name)
+        return managed is not None and managed.is_running()
 
     def _restart_target(self, target_name: str) -> Tuple[bool, str]:
         stop_success, stop_message = self._stop_target(target_name)
