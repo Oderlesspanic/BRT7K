@@ -178,6 +178,7 @@ void CornerManagerNode::publish_markers()
     text.color.a = 1.0;
 
     text.text =
+      "Ecke " + std::to_string(i + 1) + "\n" +
       c.corner_uid + "\n" +
       c.corner_id + " / " + c.wall_id +
       "\nHSV: " +
@@ -204,6 +205,7 @@ std::string CornerManagerNode::to_json_string() const
     const auto & c = corners[i];
 
     oss << "    {\n";
+    oss << "      \"number\": " << (i + 1) << ",\n";
     oss << "      \"corner_uid\": \"" << c.corner_uid << "\",\n";
     oss << "      \"corner_id\": \"" << c.corner_id << "\",\n";
     oss << "      \"wall_id\": \"" << c.wall_id << "\",\n";

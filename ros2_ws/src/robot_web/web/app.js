@@ -201,9 +201,14 @@ let frontierReady = false;
 let frontierExplorerActive = false;
 let mappingCompleted = false;
 let frontierStoppedByUser = false;
+let homebaseCornerUid = "";
+let bringAllQueue = [];
+let bringAllActive = false;
 
 const btnStartMapping = document.getElementById("btnStartMapping");
 const btnSaveMap = document.getElementById("btnSaveMap");
+const btnSetHomebase = document.getElementById("btnSetHomebase");
+const btnBringAllHome = document.getElementById("btnBringAllHome");
 const btnManual = document.getElementById("btnManual");
 const btnAuto = document.getElementById("btnAuto");
 const btnSendObjectCommand = document.getElementById("btnSendObjectCommand");
@@ -213,6 +218,7 @@ const btnLiftUp = document.getElementById("btnLiftUp");
 const btnLiftDown = document.getElementById("btnLiftDown");
 const btnGripperStop = document.getElementById("btnGripperStop");
 const frontierReadyText = document.getElementById("frontierReadyText");
+const mappingCompleteText = document.getElementById("mappingCompleteText");
 const btnStartVision = document.getElementById("btnStartVision");
 const btnStopVision = document.getElementById("btnStopVision");
 const visionState = document.getElementById("visionState");
@@ -230,6 +236,12 @@ const saveMapService = new ROSLIB.Service({
   ros: ros,
   name: "/task_manager/save_map",
   serviceType: "std_srvs/srv/Trigger"
+});
+
+const homebaseCornerTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/homebase_corner_uid",
+  messageType: "std_msgs/String"
 });
 
 const stopMotionService = new ROSLIB.Service({
@@ -337,6 +349,9 @@ function updateActionButtons() {
   btnStartMapping.classList.toggle("hidden", frontierExplorerActive || mappingCompleted);
 
   btnSendObjectCommand.disabled = !autoMode;
+  btnSetHomebase.disabled = !selectedCorner;
+  btnBringAllHome.disabled =
+    !autoMode || !mappingCompleted || !homebaseCornerUid || availableObjects.length === 0 || bringAllActive;
 
   [btnGripOpen, btnGripClose, btnLiftUp, btnLiftDown, btnGripperStop].forEach((button) => {
     button.disabled = !manualMode;
@@ -416,6 +431,19 @@ frontierReadyTopic.subscribe((msg) => {
   frontierReady = msg.data === "ready";
   setLamp("frontier_ready", frontierReady ? "green" : "red");
   frontierReadyText.textContent = frontierReady ? "Ready" : "Not ready";
+  updateActionButtons();
+});
+
+const mappingCompleteTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/task_manager/mapping_complete",
+  messageType: "std_msgs/String"
+});
+
+mappingCompleteTopic.subscribe((msg) => {
+  mappingCompleted = msg.data === "complete";
+  setLamp("mapping_complete", mappingCompleted ? "green" : "red");
+  mappingCompleteText.textContent = mappingCompleted ? "Mapping complete" : "Mapping not complete";
   updateActionButtons();
 });
 
@@ -748,6 +776,12 @@ const cornersJsonTopic = new ROSLIB.Topic({
   messageType: "std_msgs/String"
 });
 
+homebaseCornerTopic.subscribe((msg) => {
+  homebaseCornerUid = msg.data || "";
+  renderCornerTiles();
+  updateActionButtons();
+});
+
 cornersJsonTopic.subscribe((msg) => {
   try {
     const data = JSON.parse(msg.data);
@@ -778,6 +812,10 @@ function renderCornerTiles() {
       tile.classList.add("selected");
     }
 
+    if (homebaseCornerUid && homebaseCornerUid === corner.corner_uid) {
+      tile.classList.add("homebase");
+    }
+
     const rgb = hsvToRgb(
       corner.median_h,
       corner.median_s,
@@ -789,13 +827,16 @@ function renderCornerTiles() {
         class="corner-icon"
         style="background: rgb(${rgb.r}, ${rgb.g}, ${rgb.b});"
       ></div>
-      <div>${corner.corner_id}</div>
+      <div>Ecke ${corner.number || "?"}</div>
+      <small>${corner.corner_id}</small>
       <small>${corner.corner_uid}</small>
+      ${homebaseCornerUid === corner.corner_uid ? "<small>Homebase</small>" : ""}
     `;
 
     tile.addEventListener("click", () => {
       selectedCorner = corner;
       renderCornerTiles();
+      updateActionButtons();
     });
 
     cornerTileGrid.appendChild(tile);
@@ -868,6 +909,72 @@ const objectCommandTopic = new ROSLIB.Topic({
   messageType: "interfaces/ObjectPlaceCommand"
 });
 
+const objectTaskStatusTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/object_task_executor/status",
+  messageType: "std_msgs/String"
+});
+
+objectTaskStatusTopic.subscribe((msg) => {
+  if (!bringAllActive) return;
+  if (!["done", "failed", "canceled"].includes(msg.data)) return;
+
+  if (msg.data === "done") {
+    sendNextBringAllCommand();
+    return;
+  }
+
+  bringAllActive = false;
+  bringAllQueue = [];
+  alert("Objekttransport zur Homebase wurde abgebrochen: " + msg.data);
+  updateActionButtons();
+});
+
+btnSetHomebase.addEventListener("click", () => {
+  if (!selectedCorner) {
+    alert("Bitte zuerst eine Ecke auswählen.");
+    return;
+  }
+
+  homebaseCornerUid = selectedCorner.corner_uid;
+  homebaseCornerTopic.publish(new ROSLIB.Message({ data: homebaseCornerUid }));
+  renderCornerTiles();
+  updateActionButtons();
+});
+
+btnBringAllHome.addEventListener("click", () => {
+  if (manualMode) {
+    alert("Homebase-Auftrag kann nur im Automatikmodus gestartet werden.");
+    return;
+  }
+
+  if (!mappingCompleted) {
+    alert("Mapping muss zuerst gespeichert sein.");
+    return;
+  }
+
+  if (!homebaseCornerUid) {
+    alert("Bitte zuerst eine Homebase-Ecke setzen.");
+    return;
+  }
+
+  bringAllQueue = availableObjects.slice();
+  bringAllActive = true;
+  updateActionButtons();
+  sendNextBringAllCommand();
+});
+
+function sendNextBringAllCommand() {
+  if (bringAllQueue.length === 0) {
+    bringAllActive = false;
+    updateActionButtons();
+    return;
+  }
+
+  const object = bringAllQueue.shift();
+  publishObjectPlaceCommand(object, homebaseCornerUid);
+}
+
 btnSendObjectCommand.addEventListener("click", () => {
   if (manualMode) {
     alert("Auftrag kann nur im Automatikmodus gesendet werden.");
@@ -879,6 +986,10 @@ btnSendObjectCommand.addEventListener("click", () => {
     return;
   }
 
+  publishObjectPlaceCommand(selectedObject, selectedCorner.corner_uid);
+});
+
+function publishObjectPlaceCommand(object, cornerUid) {
   const msg = new ROSLIB.Message({
     header: {
       stamp: {
@@ -887,11 +998,11 @@ btnSendObjectCommand.addEventListener("click", () => {
       },
       frame_id: "map"
     },
-    object_id: selectedObject.id,
-    object_name: selectedObject.name,
-    corner_uid: selectedCorner.corner_uid,
+    object_id: object.id,
+    object_name: object.name,
+    corner_uid: cornerUid,
     mode: manualMode ? "manual" : "auto"
   });
 
   objectCommandTopic.publish(msg);
-});
+}

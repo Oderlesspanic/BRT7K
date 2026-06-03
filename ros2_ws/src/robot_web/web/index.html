@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Robot Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260603-1">
+  <link rel="stylesheet" href="style.css?v=20260603-2">
 </head>
 <body>
 
@@ -44,6 +44,10 @@
         <div class="ready-row">
           <span id="lamp_frontier_ready" class="lamp red"></span>
           <strong id="frontierReadyText">Not ready</strong>
+        </div>
+        <div class="ready-row">
+          <span id="lamp_mapping_complete" class="lamp red"></span>
+          <strong id="mappingCompleteText">Mapping not complete</strong>
         </div>
         <div class="service-row vision-row">
           <span class="service-name">Vision</span>
@@ -118,6 +122,12 @@
     <div id="cornerTileGrid" class="selection-grid">
       <div class="empty-info">Keine Ecken verfügbar</div>
     </div>
+    <button id="btnSetHomebase" class="send-button secondary">
+      Als Homebase setzen
+    </button>
+    <button id="btnBringAllHome" class="send-button">
+      Alle Objekte zur Homebase
+    </button>
 
     <button id="btnSendObjectCommand" class="send-button">
       Auftrag senden
@@ -127,7 +137,7 @@
 </div>
 
 <script src="rosbridge_client.js?v=20260601-1"></script>
-<script src="app.js?v=20260603-1"></script>
+<script src="app.js?v=20260603-2"></script>
 
 </body>
 </html>

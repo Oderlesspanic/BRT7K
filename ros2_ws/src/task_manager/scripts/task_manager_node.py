@@ -180,10 +180,12 @@ class TaskManagerNode(Node):
         self._map_received_event = threading.Event()
         self._imu_ready_event = threading.Event()
         self._frontier_ready = False
+        self._mapping_complete = False
         self._map_save_lock = threading.Lock()
 
         self._status_pub = self.create_publisher(String, "~/status_text", 10)
         self._frontier_ready_pub = self.create_publisher(String, "~/frontier_ready", 10)
+        self._mapping_complete_pub = self.create_publisher(String, "~/mapping_complete", 10)
         self._initial_pose_pub = self.create_publisher(
             PoseWithCovarianceStamped,
             "/initialpose",
@@ -533,6 +535,7 @@ class TaskManagerNode(Node):
         save_success, save_message = self._run_map_saver_once(timeout_sec=60.0)
         if save_success:
             self.get_logger().info(save_message)
+            self._set_mapping_complete(True)
         else:
             self.get_logger().error(save_message)
             return
@@ -568,6 +571,7 @@ class TaskManagerNode(Node):
         success, message = self._run_map_saver_once(timeout_sec=60.0)
         if success:
             self.get_logger().info(message)
+            self._set_mapping_complete(True)
         else:
             self.get_logger().error(message)
 
@@ -956,6 +960,7 @@ class TaskManagerNode(Node):
         messages = []
         self._map_received_event.clear()
         self._set_frontier_ready(False)
+        self._set_mapping_complete(False)
 
         for prerequisite in ("description", "odometry"):
             if prerequisite not in self._managed:
@@ -1344,6 +1349,7 @@ class TaskManagerNode(Node):
 
         self._frontier_ready = ready
         self._publish_frontier_ready()
+        self._publish_mapping_complete()
 
     def _publish_status(self) -> None:
         msg = String()
@@ -1355,6 +1361,18 @@ class TaskManagerNode(Node):
         msg = String()
         msg.data = "ready" if self._frontier_ready else "not_ready"
         self._frontier_ready_pub.publish(msg)
+
+    def _set_mapping_complete(self, complete: bool) -> None:
+        if self._mapping_complete == complete:
+            return
+
+        self._mapping_complete = complete
+        self._publish_mapping_complete()
+
+    def _publish_mapping_complete(self) -> None:
+        msg = String()
+        msg.data = "complete" if self._mapping_complete else "not_complete"
+        self._mapping_complete_pub.publish(msg)
 
     def _status_text(self) -> str:
         lines = []

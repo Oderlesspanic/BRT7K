@@ -13,6 +13,8 @@ let mapResolution = 0;
 let mapOrigin = { x: 0, y: 0, yaw: 0 };
 let drawBounds = { x: 0, y: 0, scale: 1, width: 0, height: 0 };
 let robotPose = null;
+let corners = [];
+let homebaseCornerUid = "";
 const transforms = new Map();
 const ROBOT_MESH_BOUNDS = {
   minX: -0.3484,
@@ -45,6 +47,18 @@ const tfStaticTopic = new ROSLIB.Topic({
   messageType: "tf2_msgs/TFMessage"
 });
 
+const cornersJsonTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/corners/json",
+  messageType: "std_msgs/String"
+});
+
+const homebaseCornerTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/homebase_corner_uid",
+  messageType: "std_msgs/String"
+});
+
 ros.on("connection", () => {
   mapStatus.textContent = "verbunden, warte auf Karte";
 });
@@ -73,6 +87,19 @@ mapTopic.subscribe((msg) => {
 
 tfTopic.subscribe(updateTransforms);
 tfStaticTopic.subscribe(updateTransforms);
+cornersJsonTopic.subscribe((msg) => {
+  try {
+    const data = JSON.parse(msg.data);
+    corners = data.corners || [];
+    resizeAndDraw();
+  } catch (error) {
+    console.error("Fehler beim Lesen von /corners/json:", error);
+  }
+});
+homebaseCornerTopic.subscribe((msg) => {
+  homebaseCornerUid = msg.data || "";
+  resizeAndDraw();
+});
 
 window.addEventListener("resize", resizeAndDraw);
 
@@ -139,6 +166,7 @@ function resizeAndDraw() {
     mapHeight * scale
   );
   ctx.restore();
+  drawCorners();
   drawRobot();
 }
 
@@ -238,6 +266,36 @@ function drawRobot() {
   }
 
   ctx.restore();
+}
+
+function drawCorners() {
+  if (!mapBitmap || mapResolution === 0) return;
+
+  for (const corner of corners) {
+    if (!corner.center_map) continue;
+
+    const center = worldToCanvas(corner.center_map.x, corner.center_map.y);
+    if (!center) continue;
+
+    const isHomebase = homebaseCornerUid && homebaseCornerUid === corner.corner_uid;
+    const label = isHomebase ? `H${corner.number || ""}` : String(corner.number || "?");
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, isHomebase ? 13 : 10, 0, Math.PI * 2);
+    ctx.fillStyle = isHomebase ? "#39d353" : "#1f6feb";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 12px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, center.x, center.y);
+    ctx.restore();
+  }
 }
 
 function yawFromQuaternion(q) {
