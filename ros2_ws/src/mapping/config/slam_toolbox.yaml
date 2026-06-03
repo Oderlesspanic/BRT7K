@@ -22,9 +22,7 @@ slam_toolbox:
     minimum_travel_distance: 0.20
     minimum_travel_heading: 0.25
 
-    # In der kleinen Arena haben falsche Loop-Closures die Karte sprunghaft gedreht.
-    # Erst stabil lokal mappen; Loop-Closing spaeter gezielt wieder aktivieren.
-    do_loop_closing: false
+    do_loop_closing: true
     loop_search_maximum_distance: 3.0
     loop_match_minimum_chain_size: 5
     loop_match_maximum_variance_coarse: 3.0
