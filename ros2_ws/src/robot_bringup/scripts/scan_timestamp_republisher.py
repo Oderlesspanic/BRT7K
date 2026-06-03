@@ -29,7 +29,7 @@ class ScanTimestampRepublisher(Node):
         )
 
     def scan_callback(self, msg: LaserScan) -> None:
-        msg.header.stamp = self.get_clock().now().to_msg()
+        #msg.header.stamp = self.get_clock().now().to_msg()
         self.publisher.publish(msg)
 
 
