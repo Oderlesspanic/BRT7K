@@ -24,6 +24,7 @@ Der Node bietet die folgenden ROS 2 Services:
 - ~/restart_all (Trigger): Startet alle verwalteten Launch Dateien neu.
 - ~/save_map (Trigger): Speichert die aktuelle SLAM-Karte ohne Mapping zu beenden.
 - ~/finish_mapping (Trigger): Speichert die Karte, beendet Mapping und startet Navigation.
+- ~/stop_motion (Trigger): Stoppt aktive Navigationsziele und setzt cmd_vel auf 0.
 - ~/start_<target> (Trigger): Startet die angegebene Launch Datei.
 - ~/stop_<target> (Trigger): Stoppt die angegebene Launch Datei.
 - ~/restart_<target> (Trigger): Startet die angegebene Launch Datei neu.
@@ -78,13 +79,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
+from action_msgs.srv import CancelGoal
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from lifecycle_msgs.msg import Transition
 from lifecycle_msgs.srv import ChangeState, GetState
-from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import String
@@ -173,6 +175,8 @@ class TaskManagerNode(Node):
             "/initialpose",
             10,
         )
+        self._cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        self._cmd_vel_nav_pub = self.create_publisher(Twist, "/cmd_vel_nav", 10)
         self._command_sub = self.create_subscription(
             String,
             "~/command",
@@ -192,6 +196,7 @@ class TaskManagerNode(Node):
         self.create_service(Trigger, "~/restart_all", self._restart_all_service)
         self.create_service(Trigger, "~/save_map", self._save_map_service)
         self.create_service(Trigger, "~/finish_mapping", self._finish_mapping_service)
+        self.create_service(Trigger, "~/stop_motion", self._stop_motion_service)
 
         for name in self._managed:
             self.create_service(
@@ -416,6 +421,56 @@ class TaskManagerNode(Node):
         response.success = True
         response.message = "Map-Save gestartet"
         return response
+
+    def _stop_motion_service(
+        self,
+        request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        del request
+        threading.Thread(target=self._stop_motion_sequence, daemon=True).start()
+        response.success = True
+        response.message = "Stop-Motion gestartet"
+        return response
+
+    def _stop_motion_sequence(self) -> None:
+        if "frontier_explorer" in self._managed:
+            self._stop_target("frontier_explorer")
+
+        cancel_success, cancel_message = self._cancel_navigate_to_pose_goals()
+        if cancel_success:
+            self.get_logger().info(cancel_message)
+        else:
+            self.get_logger().warn(cancel_message)
+
+        self._publish_zero_velocity_burst()
+
+    def _cancel_navigate_to_pose_goals(self) -> Tuple[bool, str]:
+        client = self.create_client(CancelGoal, "/navigate_to_pose/_action/cancel_goal")
+        if not client.wait_for_service(timeout_sec=2.0):
+            return True, "Kein aktiver /navigate_to_pose Cancel-Service gefunden"
+
+        request = CancelGoal.Request()
+        future = client.call_async(request)
+        deadline = time.monotonic() + 5.0
+        while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+        if not future.done():
+            return False, "Timeout beim Cancel von /navigate_to_pose Goals"
+
+        response = future.result()
+        if response is None:
+            return False, "Keine Antwort beim Cancel von /navigate_to_pose Goals"
+
+        return True, f"/navigate_to_pose Cancel-Code: {response.return_code}"
+
+    def _publish_zero_velocity_burst(self) -> None:
+        twist = Twist()
+        for _ in range(10):
+            self._cmd_vel_pub.publish(twist)
+            self._cmd_vel_nav_pub.publish(twist)
+            time.sleep(0.1)
 
     def _finish_mapping_sequence(self) -> None:
         self.get_logger().info("Mapping abgeschlossen: speichere Map")
