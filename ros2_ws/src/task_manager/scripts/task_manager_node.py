@@ -110,6 +110,21 @@ class ManagedLaunch:
 
 
 class TaskManagerNode(Node):
+    START_ALL_DENYLIST = {
+        "vision",
+        "camera",
+        "corner_manager",
+        "object_manager",
+        "object_task_executor",
+        "room_vision",
+        "object_localizer",
+        "edge_color",
+        "navigation",
+        "navigation_debug",
+        "navigation_slam",
+        "frontier_explorer",
+        "map_saver",
+    }
     NAVIGATION_SLAM_LIFECYCLE_NODES = (
         "/controller_server",
         "/planner_server",
@@ -229,10 +244,21 @@ class TaskManagerNode(Node):
         configured_targets = [
             str(name) for name in self.get_parameter("start_all_targets").value
         ]
-        return [
-            name for name in configured_targets
-            if name in self._managed
-        ]
+        start_targets = []
+        for name in configured_targets:
+            if name not in self._managed:
+                continue
+
+            if name in self.START_ALL_DENYLIST:
+                self.get_logger().warn(
+                    f"Ignoriere '{name}' in start_all_targets; "
+                    "dieses Target wird nicht mit start_all gestartet"
+                )
+                continue
+
+            start_targets.append(name)
+
+        return start_targets
 
     def _load_autostart_enabled(self) -> bool:
         self.declare_parameter("autostart", False)
