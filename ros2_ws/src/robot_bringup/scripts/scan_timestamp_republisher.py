@@ -10,16 +10,18 @@ class ScanTimestampRepublisher(Node):
         super().__init__("scan_timestamp_republisher")
         self.declare_parameter("input_topic", "/scan_raw")
         self.declare_parameter("output_topic", "/scan")
+        self.declare_parameter("queue_size", 1)
 
         input_topic = self.get_parameter("input_topic").value
         output_topic = self.get_parameter("output_topic").value
+        queue_size = int(self.get_parameter("queue_size").value)
 
-        self.publisher = self.create_publisher(LaserScan, output_topic, 10)
+        self.publisher = self.create_publisher(LaserScan, output_topic, queue_size)
         self.subscription = self.create_subscription(
             LaserScan,
             input_topic,
             self.scan_callback,
-            10,
+            queue_size,
         )
 
         self.get_logger().info(

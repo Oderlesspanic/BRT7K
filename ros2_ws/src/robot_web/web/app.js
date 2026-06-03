@@ -226,9 +226,15 @@ const cancelObjectTaskService = new ROSLIB.Service({
   serviceType: "std_srvs/srv/Trigger"
 });
 
-const finishMappingService = new ROSLIB.Service({
+const saveMapService = new ROSLIB.Service({
   ros: ros,
-  name: "/task_manager/finish_mapping",
+  name: "/task_manager/save_map",
+  serviceType: "std_srvs/srv/Trigger"
+});
+
+const stopMotionService = new ROSLIB.Service({
+  ros: ros,
+  name: "/task_manager/stop_motion",
   serviceType: "std_srvs/srv/Trigger"
 });
 
@@ -358,7 +364,7 @@ btnStartMapping.addEventListener("click", async () => {
 
 btnSaveMap.addEventListener("click", async () => {
   btnSaveMap.disabled = true;
-  const response = await callTriggerService(finishMappingService, 300000);
+  const response = await callTriggerService(saveMapService, 300000);
 
   if (!response.success) {
     alert("Map konnte nicht gespeichert werden: " + response.message);
@@ -427,6 +433,12 @@ const cmdVelTopic = new ROSLIB.Topic({
   messageType: "geometry_msgs/Twist"
 });
 
+const cmdVelNavTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: "/cmd_vel_nav",
+  messageType: "geometry_msgs/Twist"
+});
+
 const gripperCommandTopic = new ROSLIB.Topic({
   ros: ros,
   name: "/esp32_gripper/command",
@@ -439,12 +451,10 @@ const gripperManualTopic = new ROSLIB.Topic({
   messageType: "std_msgs/Int32"
 });
 
-function sendCmdVel(linearX, angularZ) {
-  if (!manualMode) return;
+function makeTwist(linearX, angularZ, scaled = true) {
+  const factor = scaled ? speedPercent / 100.0 : 1.0;
 
-  const factor = speedPercent / 100.0;
-
-  const twist = new ROSLIB.Message({
+  return new ROSLIB.Message({
     linear: {
       x: linearX * factor,
       y: 0.0,
@@ -456,8 +466,30 @@ function sendCmdVel(linearX, angularZ) {
       z: angularZ * factor
     }
   });
+}
 
-  cmdVelTopic.publish(twist);
+function sendCmdVel(linearX, angularZ) {
+  if (!manualMode) return;
+
+  cmdVelTopic.publish(makeTwist(linearX, angularZ));
+}
+
+function publishEmergencyStop() {
+  const stopTwist = new ROSLIB.Message({
+    linear: {
+      x: 0.0,
+      y: 0.0,
+      z: 0.0
+    },
+    angular: {
+      x: 0.0,
+      y: 0.0,
+      z: 0.0
+    }
+  });
+
+  cmdVelTopic.publish(stopTwist);
+  cmdVelNavTopic.publish(stopTwist);
 }
 
 document.getElementById("btnForward").addEventListener("click", () => {
@@ -477,9 +509,11 @@ document.getElementById("btnRight").addEventListener("click", () => {
 });
 
 document.getElementById("btnStop").addEventListener("click", async () => {
-  sendCmdVel(0.0, 0.0);
-  sendGripperManual(0);
+  publishEmergencyStop();
+  sendGripperManual(0, true);
+  callTriggerService(stopMotionService, 30000);
   await stopActiveWork();
+  publishEmergencyStop();
 });
 
 function sendGripperGap(gapMeters) {
@@ -489,8 +523,8 @@ function sendGripperGap(gapMeters) {
   }));
 }
 
-function sendGripperManual(command) {
-  if (!manualMode) return;
+function sendGripperManual(command, force = false) {
+  if (!force && !manualMode) return;
   gripperManualTopic.publish(new ROSLIB.Message({
     data: command
   }));
@@ -539,7 +573,12 @@ async function stopActiveWork() {
     await callTriggerService(cancelObjectTaskService);
   }
 
-  if (frontierExplorerActive) {
+  const mappingRunning = taskManagerStates.get("mapping") === "running";
+  const navigationSlamRunning = taskManagerStates.get("navigation_slam") === "running";
+  const shouldStopFrontier =
+    frontierExplorerActive || mappingRunning || navigationSlamRunning;
+
+  if (shouldStopFrontier) {
     frontierStoppedByUser = true;
     await callTriggerService(getTaskManagerService("stop", "frontier_explorer"));
     frontierExplorerActive = false;

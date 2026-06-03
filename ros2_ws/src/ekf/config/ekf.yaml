@@ -2,7 +2,7 @@ ekf_filter_node:
   ros__parameters:
     frequency: 5.0
     two_d_mode: true
-    publish_acceleration: false
+    publish_acceleration: true
     publish_tf: true
 
     map_frame: map
@@ -23,7 +23,7 @@ ekf_filter_node:
                   false, false, true,
                   false, false, false,
                   false, false, true,
-                  false, false, false]
+                  true,  true, false]
     imu0_queue_size: 20
     imu0_differential: false
     imu0_relative: true

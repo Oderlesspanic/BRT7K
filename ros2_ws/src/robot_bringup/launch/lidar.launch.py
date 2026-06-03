@@ -39,6 +39,7 @@ def generate_launch_description():
             parameters=[{
                 "input_topic": "/scan_raw",
                 "output_topic": "/scan",
+                "queue_size": 1,
             }],
         ),
     ])
