@@ -406,11 +406,11 @@ class TaskManagerNode(Node):
         ]
 
     def _start_target_with_imu_barrier(self, target_name: str) -> Tuple[bool, str]:
-        if target_name == "imu":
+        if target_name in {"imu", "odometry"}:
             self._imu_ready_event.clear()
 
         success, message = self._execute_action("start", target_name)
-        if target_name != "imu" or not success or self._imu_startup_timeout_sec <= 0.0:
+        if target_name not in {"imu", "odometry"} or not success or self._imu_startup_timeout_sec <= 0.0:
             return success, message
 
         block_message = (
@@ -965,7 +965,7 @@ class TaskManagerNode(Node):
         for prerequisite in ("description", "odometry"):
             if prerequisite not in self._managed:
                 continue
-            success, message = self._start_target(prerequisite)
+            success, message = self._start_target_with_imu_barrier(prerequisite)
             messages.append(message)
             if not success:
                 self.get_logger().error(message)

@@ -30,26 +30,6 @@ def generate_launch_description():
             os.path.join(log_dir, "imu_raw.csv"),
         ),
         topic_logger(
-            "/mag/data_raw",
-            "sensor_msgs/msg/MagneticField",
-            os.path.join(log_dir, "magnetometer_raw.csv"),
-        ),
-        topic_logger(
-            "/joint_states",
-            "sensor_msgs/msg/JointState",
-            os.path.join(log_dir, "esp_wheel_joint_states.csv"),
-        ),
-        topic_logger(
-            "/wheel/odometry",
-            "nav_msgs/msg/Odometry",
-            os.path.join(log_dir, "wheel_odometry.csv"),
-        ),
-        topic_logger(
-            "/imu/data_fixed",
-            "sensor_msgs/msg/Imu",
-            os.path.join(log_dir, "imu_mag_fusion.csv"),
-        ),
-        topic_logger(
             "/odom",
             "nav_msgs/msg/Odometry",
             os.path.join(log_dir, "ekf_odom.csv"),
