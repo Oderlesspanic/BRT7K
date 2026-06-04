@@ -9,7 +9,7 @@ def generate_launch_description():
     mapping_config = os.path.join(
         get_package_share_directory('mapping'),
         'config',
-        'slam_toolbox.yaml'
+        'mapper_params_online_async.yaml'
     )
 
     return LaunchDescription([
