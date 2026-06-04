@@ -159,7 +159,7 @@ void MPU6050Node::calibrate_startup_offsets()
         "IMU Startkalibrierung: %d Samples, Roboter muss stillstehen",
         sample_count
     );
-
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     for (int i = 0; i < sample_count; ++i)
     {
         auto raw = driver_->read_imu();

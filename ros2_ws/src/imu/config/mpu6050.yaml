@@ -34,4 +34,4 @@ mpu6050_node:
 
     gyro_auto_calibration: true
     accel_auto_calibration: false
-    calibration_samples: 100
+    calibration_samples: 1000

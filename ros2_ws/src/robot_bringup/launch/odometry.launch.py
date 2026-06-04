@@ -6,25 +6,11 @@ import os
 
 
 def generate_launch_description():
-    imu_dir = get_package_share_directory("imu")
-    imu_launch = os.path.join(
-        imu_dir,
+    wheel_odometry_dir = get_package_share_directory("odometry")
+    wheel_odometry_launch = os.path.join(
+        wheel_odometry_dir,
         "launch",
-        "imu.launch.py"
-    )
-
-    mmc5603_dir = get_package_share_directory("mmc5603")
-    mmc5603_launch = os.path.join(
-        mmc5603_dir,
-        "launch",
-        "mmc5603.launch.py"
-    )
-
-    imu_mag_fusion_dir = get_package_share_directory("imu_mag_fusion")
-    imu_mag_fusion_launch = os.path.join(
-        imu_mag_fusion_dir,
-        "launch",
-        "madgwick_with_cov_fix.launch.py"
+        "wheel_odometry.launch.py"
     )
 
     ekf_dir = get_package_share_directory("ekf")
@@ -37,13 +23,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(imu_launch)
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(mmc5603_launch)
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(imu_mag_fusion_launch)
+            PythonLaunchDescriptionSource(wheel_odometry_launch)
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ekf_launch)

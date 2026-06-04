@@ -89,6 +89,7 @@ from lifecycle_msgs.srv import ChangeState, GetState
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
+from sensor_msgs.msg import Imu
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
@@ -153,6 +154,8 @@ class TaskManagerNode(Node):
         self._start_all_target_names = self._load_start_all_targets()
         self._autostart_enabled = self._load_autostart_enabled()
         self._autostart_delay_sec = self._load_autostart_delay()
+        self._imu_startup_timeout_sec = self._load_imu_startup_timeout()
+        self._imu_ready_topic = self._load_imu_ready_topic()
         self._autostart_done = False
         self._autostart_timer = None
         self._log_dir = self._load_log_dir()
@@ -165,6 +168,7 @@ class TaskManagerNode(Node):
             "/navigate_to_pose",
         )
         self._map_received_event = threading.Event()
+        self._imu_ready_event = threading.Event()
         self._frontier_ready = False
         self._map_save_lock = threading.Lock()
 
@@ -187,6 +191,12 @@ class TaskManagerNode(Node):
             OccupancyGrid,
             "/map",
             self._handle_map,
+            10,
+        )
+        self._imu_ready_sub = self.create_subscription(
+            Imu,
+            self._imu_ready_topic,
+            self._handle_imu_ready,
             10,
         )
 
@@ -291,6 +301,14 @@ class TaskManagerNode(Node):
         self.declare_parameter("autostart_delay_sec", 3.0)
         return max(0.1, float(self.get_parameter("autostart_delay_sec").value))
 
+    def _load_imu_startup_timeout(self) -> float:
+        self.declare_parameter("imu_startup_timeout_sec", 20.0)
+        return max(0.0, float(self.get_parameter("imu_startup_timeout_sec").value))
+
+    def _load_imu_ready_topic(self) -> str:
+        self.declare_parameter("imu_ready_topic", "/imu/data_raw")
+        return str(self.get_parameter("imu_ready_topic").value)
+
     def _load_log_dir(self) -> Path:
         default_log_dir = os.environ.get("BRT7K_TASK_LOG_DIR", "/tmp/brt7k-task-manager")
         self.declare_parameter("log_dir", default_log_dir)
@@ -339,10 +357,7 @@ class TaskManagerNode(Node):
         response: Trigger.Response,
     ) -> Trigger.Response:
         del request
-        results = [
-            self._execute_action("start", name)[1]
-            for name in self._start_all_target_names
-        ]
+        results = self._start_all_sequence()
         response.success = True
         response.message = "\n".join(results)
         return response
@@ -366,11 +381,41 @@ class TaskManagerNode(Node):
             + ", ".join(self._start_all_target_names)
         )
         for target_name in self._start_all_target_names:
-            success, message = self._execute_action("start", target_name)
+            success, message = self._start_target_with_imu_barrier(target_name)
             if success:
                 self.get_logger().info(message)
             else:
                 self.get_logger().error(message)
+
+    def _start_all_sequence(self) -> List[str]:
+        return [
+            self._start_target_with_imu_barrier(name)[1]
+            for name in self._start_all_target_names
+        ]
+
+    def _start_target_with_imu_barrier(self, target_name: str) -> Tuple[bool, str]:
+        if target_name == "imu":
+            self._imu_ready_event.clear()
+
+        success, message = self._execute_action("start", target_name)
+        if target_name != "imu" or not success or self._imu_startup_timeout_sec <= 0.0:
+            return success, message
+
+        block_message = (
+            f"Warte auf erste IMU-Nachricht auf {self._imu_ready_topic}; "
+            f"Timeout {self._imu_startup_timeout_sec:.1f}s"
+        )
+        self.get_logger().info(block_message)
+        if self._imu_ready_event.wait(timeout=self._imu_startup_timeout_sec):
+            ready_message = "IMU publiziert; weitere Starts werden freigegeben"
+            self.get_logger().info(ready_message)
+            return success, f"{message}\n{block_message}\n{ready_message}"
+
+        timeout_message = (
+            "Timeout beim Warten auf IMU-Publish; weitere Starts werden trotzdem freigegeben"
+        )
+        self.get_logger().warn(timeout_message)
+        return success, f"{message}\n{block_message}\n{timeout_message}"
 
     def _stop_all_service(
         self,
@@ -390,7 +435,7 @@ class TaskManagerNode(Node):
     ) -> Trigger.Response:
         del request
         stop_results = [self._stop_target(name)[1] for name in reversed(list(self._managed.keys()))]
-        start_results = [self._start_target(name)[1] for name in self._start_all_target_names]
+        start_results = self._start_all_sequence()
         response.success = True
         response.message = "\n".join(stop_results + start_results)
         return response
@@ -1216,6 +1261,10 @@ class TaskManagerNode(Node):
     def _handle_map(self, msg: OccupancyGrid) -> None:
         del msg
         self._map_received_event.set()
+
+    def _handle_imu_ready(self, msg: Imu) -> None:
+        del msg
+        self._imu_ready_event.set()
 
     def _set_frontier_ready(self, ready: bool) -> None:
         if self._frontier_ready == ready:

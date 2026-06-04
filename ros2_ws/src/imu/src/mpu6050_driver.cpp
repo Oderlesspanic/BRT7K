@@ -18,6 +18,8 @@ bool MPU6050Driver::initialize()
         return false;
     }
 
+    delay(500); // Kurze Verzögerung nach dem Aufwecken
+
     // Beschleunigung: ±2g
     if (!bus_->writeByte(REG_ACCEL_CONFIG, 0x00))
     {
