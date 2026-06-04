@@ -69,7 +69,7 @@
 #define WHEEL_BASE_M     0.3212f   // m, matches robot_description 2 * wheel_y
 #define MAX_CMD_LINEAR_MPS   0.10f
 #define MAX_CMD_ANGULAR_RADPS 0.25f
-#define ENCODER_STEPS_PER_REV 65536.0f  // 0–65535 per protocol = one full revolution
+#define ENCODER_STEPS_PER_REV 32768.0f  // 0–32768 per protocol = one full revolution
 #define ODOM_PUBLISH_MS 100
 
 // ─────────────────────────────────────────────
@@ -473,10 +473,10 @@ void timer_odom_cb(rcl_timer_t * t, int64_t last_call_time) {
   const float left_revolutions =
     (float)left_laps + ((float)left_position / ENCODER_STEPS_PER_REV);
   const float right_revolutions =
-    (float)right_laps + ((float)right_position / ENCODER_STEPS_PER_REV);
+    (float)right_laps + ((ENCODER_STEPS_PER_REV - (float)right_position) / ENCODER_STEPS_PER_REV);
 
   const float left_rad = left_revolutions * 2.0f * 3.14159265f;
-  const float right_rad = -right_revolutions * 2.0f * 3.14159265f;  // right motor is mounted mirrored
+  const float right_rad = -right_revolutions * 2.0f * 3.14159265f;
   const uint32_t now_ms = millis();
 
   if (!s_odom_ready) {
