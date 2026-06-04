@@ -37,6 +37,7 @@ task_manager:
       - "map_saver:mapping:map_saver.launch.py"
     start_all_targets:
       - "odometry"
-      - "sensor_logs"
+      #- "sensor_logs"
       - "web"
       #- "mapping"
+
