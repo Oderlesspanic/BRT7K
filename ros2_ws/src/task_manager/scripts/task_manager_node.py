@@ -255,7 +255,6 @@ class TaskManagerNode(Node):
             "web:robot_bringup:web.launch.py",
             "hardware:robot_bringup:hardware.launch.py",
             "vision:robot_bringup:vision.launch.py",
-            "odometry:robot_bringup:odometry.launch.py",
             "mapping:robot_bringup:mapping.launch.py",
             "slam:mapping:mapping.launch.py",
             "frontier_explorer:frontier_explorer:frontier_explorer.launch.py",
@@ -406,11 +405,11 @@ class TaskManagerNode(Node):
         ]
 
     def _start_target_with_imu_barrier(self, target_name: str) -> Tuple[bool, str]:
-        if target_name in {"imu", "odometry"}:
+        if target_name == "imu":
             self._imu_ready_event.clear()
 
         success, message = self._execute_action("start", target_name)
-        if target_name not in {"imu", "odometry"} or not success or self._imu_startup_timeout_sec <= 0.0:
+        if target_name != "imu" or not success or self._imu_startup_timeout_sec <= 0.0:
             return success, message
 
         block_message = (
@@ -962,7 +961,14 @@ class TaskManagerNode(Node):
         self._set_frontier_ready(False)
         self._set_mapping_complete(False)
 
-        for prerequisite in ("description", "odometry"):
+        for prerequisite in (
+            "description",
+            "imu",
+            "esp_drive_agent",
+            "magnetometer",
+            "imu_fusion",
+            "ekf",
+        ):
             if prerequisite not in self._managed:
                 continue
             success, message = self._start_target_with_imu_barrier(prerequisite)

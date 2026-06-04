@@ -33,7 +33,6 @@
   <exec_depend>navigation</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>mmc5603</exec_depend>
-  <exec_depend>odometry</exec_depend>
   <exec_depend>sllidar_ros2</exec_depend>
   <exec_depend>task_manager</exec_depend>
 
