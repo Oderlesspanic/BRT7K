@@ -1,10 +1,5 @@
 <?xml version="1.0"?>
 <robot name="BRT7K" xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <!--  all measuremts are in meter and radiant ! -->
-  <!-- =========================
-       Parameter
-  ========================== -->
-
   <xacro:arg name="wheel_radius" default="0.03660"/> 
   <xacro:arg name="wheel_width" default="0.0200"/> 
   <xacro:arg name="wheel_y" default="0.1610"/>
@@ -32,7 +27,6 @@
   <xacro:property name="gripper_width" value="0.1"/>
   <xacro:property name="gripper_height" value="0.1"/>
 
-  <!-- Sensorpositionen -->
   <xacro:property name="laser_x" value="0.0"/> 
   <xacro:property name="laser_y" value="0.0"/> 
   <xacro:property name="laser_z" value="0.29"/> 
@@ -51,35 +45,32 @@
   <xacro:property name="camera_y" value="0.0"/> 
   <xacro:property name="camera_z" value="0.2402"/> 
   <xacro:property name="camera_p" value="0.3562"/> 
-  <!-- =========================
-       Farben
-  ========================== -->
+
   <material name="blue">
     <color rgba="0.2 0.4 0.8 1.0"/>
   </material>
-
   <material name="black">
     <color rgba="0.1 0.1 0.1 1.0"/>
   </material>
-
   <material name="gray">
     <color rgba="0.6 0.6 0.6 1.0"/>
   </material>
-
   <material name="green">
     <color rgba="0.2 0.8 0.2 1.0"/>
   </material>
-
   <material name="red">
     <color rgba="0.8 0.2 0.2 1.0"/>
   </material>
 
-  <!-- =========================
-       Base Link
-  ========================== -->
-  <link name="base_link">
+  <link name="base_footprint"/>
 
-  
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
     <visual>
       <origin xyz="-0.003435 -0.000615 0" rpy="0 0 1.57079632679"/>
       <geometry>
@@ -87,50 +78,28 @@
       </geometry>
     </visual>
    
-    <!-- 
-    <visual>
-      <origin xyz="0 0 ${base_height/2.0}" rpy="0 0 0"/>
+    <collision>
+      <origin xyz="0.215 0.155 0.05" rpy="0 0 0"/>
       <geometry>
-        <box size="${base_length} ${base_width} ${base_height}"/>
+        <box size="0.22 0.09 0.10"/>
       </geometry>
-      <material name="blue"/>
-    </visual>
-  -->
-   <!-- linker U-Schenkel -->
-  <collision>
-    <origin xyz="0.215 0.155 0.05" rpy="0 0 0"/>
-    <geometry>
-      <box size="0.22 0.09 0.10"/> <!-- passt -->
-    </geometry>
-  </collision>
+    </collision>
 
-  <!-- rechter U-Schenkel -->
-  <collision>
-    <origin xyz="0.215 -0.155 0.05" rpy="0 0 0"/>
-    <geometry>
-      <box size="0.22 0.09 0.10"/> <!-- passt -->
-    </geometry>
-  </collision>
+    <collision>
+      <origin xyz="0.215 -0.155 0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.22 0.09 0.10"/>
+      </geometry>
+    </collision>
 
-  <!-- hinterer Steg -->
-  <collision>
-    <origin xyz="-0.10 0.0 0.05" rpy="0 0 0"/>
-    <geometry>
-      <box size="0.41 0.4 0.10"/> <!-- passt -->
-    </geometry>
-  </collision>
-</link>
-
-<link name="base_footprint">
+    <collision>
+      <origin xyz="-0.10 0.0 0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.41 0.4 0.10"/>
+      </geometry>
+    </collision>
   </link>
-  <joint name="base_footprint" type="fixed">
-    <parent link="base_link"/>
-    <child link="base_footprint"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint>
-  <!-- =========================
-       Wheel Macro
-  ========================== -->
+
   <xacro:macro name="wheel" params="name x y z">
     <link name="${name}">
       <visual>
@@ -157,68 +126,58 @@
     </joint>
   </xacro:macro>
 
-  <!-- Räder -->
   <xacro:wheel name="left_wheel_link"  x="${wheel_x}" y="${wheel_y}"  z="${wheel_z}"/>
   <xacro:wheel name="right_wheel_link" x="${wheel_x}" y="-${wheel_y}" z="${wheel_z}"/>
 
-<!-- =========================
-       Gripper Macro
-  ========================== -->
-
   <xacro:macro name="gripper" params="name x y z yaw mesh_file visual_x visual_y visual_z">
-  <link name="${name}">
-    <visual>
-      <origin xyz="${visual_x} ${visual_y} ${visual_z}" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://robot_description/meshes/${mesh_file}"
-              scale="0.001 0.001 0.001"/>
-      </geometry>
-      <material name="black"/>
-    </visual>
+    <link name="${name}">
+      <visual>
+        <origin xyz="${visual_x} ${visual_y} ${visual_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://robot_description/meshes/${mesh_file}" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="black"/>
+      </visual>
 
-    <collision>
-      <origin xyz="${gripper_length/2.0} 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="${gripper_length} ${gripper_width} ${gripper_height}"/>
-      </geometry>
-    </collision>
-  </link>
+      <collision>
+        <origin xyz="${gripper_length/2.0} 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${gripper_length} ${gripper_width} ${gripper_height}"/>
+        </geometry>
+      </collision>
+    </link>
 
-  <joint name="${name}_joint" type="revolute">
-    <parent link="base_link"/>
-    <child link="${name}"/>
-    <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
-    <axis xyz="0 0 1"/>
-    <limit lower="0" upper="3.145" effort="1.0" velocity="1.0"/>
-  </joint>
-</xacro:macro>
+    <joint name="${name}_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="0" upper="3.145" effort="1.0" velocity="1.0"/>
+    </joint>
+  </xacro:macro>
 
-  <!-- Greifer -->
   <xacro:gripper
-  name="left_gripper_link"
-  x="${gripper_x}"
-  y="${gripper_y}"
-  z="${gripper_z}"
-  yaw="${gripper_yaw}"
-  mesh_file="gripper_left.stl"
-  visual_x="0.106920"
-  visual_y="-0.165493"
-  visual_z="-0.031400"/>
+    name="left_gripper_link"
+    x="${gripper_x}"
+    y="${gripper_y}"
+    z="${gripper_z}"
+    yaw="${gripper_yaw}"
+    mesh_file="gripper_left.stl"
+    visual_x="0.106920"
+    visual_y="-0.165493"
+    visual_z="-0.031400"/>
 
-<xacro:gripper
-  name="right_gripper_link"
-  x="${gripper_x}"
-  y="-${gripper_y}"
-  z="${gripper_z}"
-  yaw="-${gripper_yaw}"
-  mesh_file="gripper_right.stl"
-  visual_x="-0.106894"
-  visual_y="-0.165477"
-  visual_z="-0.019400"/>
+  <xacro:gripper
+    name="right_gripper_link"
+    x="${gripper_x}"
+    y="-${gripper_y}"
+    z="${gripper_z}"
+    yaw="-${gripper_yaw}"
+    mesh_file="gripper_right.stl"
+    visual_x="-0.106894"
+    visual_y="-0.165477"
+    visual_z="-0.019400"/>
 
-  <!-- =========================
-       LiDAR
-  ========================== -->
   <link name="laser_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -235,9 +194,6 @@
     <origin xyz="${laser_x} ${laser_y} ${laser_z}" rpy="${laser_roll} 0 ${laser_yaw}"/>
   </joint>
 
-  <!-- =========================
-       IMU
-  ========================== -->
   <link name="imu_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -254,9 +210,6 @@
     <origin xyz="${imu_x} ${imu_y} ${imu_z}" rpy="0 0 0"/>
   </joint>
 
-  <!-- =========================
-       Magnetometer
-  ========================== -->
   <link name="magnetometer_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -273,9 +226,6 @@
     <origin xyz="${mag_x} ${mag_y} ${mag_z}" rpy="0 0 0"/>
   </joint>
 
-  <!-- =========================
-       Kamera
-  ========================== -->
   <link name="camera_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -292,7 +242,6 @@
     <origin xyz="${camera_x} ${camera_y} ${camera_z}" rpy="0 ${camera_p} 0"/>
   </joint>
 
-  <!-- Optischer Kamerarahmen -->
   <link name="camera_optical_link"/>
 
   <joint name="camera_optical_joint" type="fixed">
