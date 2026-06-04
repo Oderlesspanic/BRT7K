@@ -39,4 +39,4 @@ task_manager:
       - "odometry"
       - "sensor_logs"
       - "web"
-      - "mapping"
+      #- "mapping"
