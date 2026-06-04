@@ -20,10 +20,19 @@ def generate_launch_description():
         "ekf.launch.py"
     )
 
+    laser_odometry_dir = get_package_share_directory("laser_odometry")
+    laser_odometry_launch = os.path.join(
+        laser_odometry_dir,
+        "launch",
+        "laser_odometry.launch.py"
+    )
 
     return LaunchDescription([
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(imu_launch)
+        ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(laser_odometry_launch)
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ekf_launch)
