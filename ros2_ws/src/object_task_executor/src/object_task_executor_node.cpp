@@ -19,13 +19,14 @@ ObjectTaskExecutorNode::ObjectTaskExecutorNode()
   this->declare_parameter<std::string>(
     "update_object_pose_service",
     "/object_manager/update_object_pose");
-  this->declare_parameter<std::string>("gripper_command_topic", "/gripper/command");
-  this->declare_parameter<std::string>("platform_command_topic", "/platform/command");
+  this->declare_parameter<std::string>("set_pos_topic", "/esp32_gripper/set_pos");
   this->declare_parameter<std::string>("status_topic", "/object_task_executor/status");
-  this->declare_parameter<std::string>("gripper_close_command", "close");
-  this->declare_parameter<std::string>("gripper_open_command", "open");
-  this->declare_parameter<std::string>("platform_up_command", "up");
-  this->declare_parameter<std::string>("platform_down_command", "down");
+  this->declare_parameter<int>("gripper_left_close_pos", -6500);
+  this->declare_parameter<int>("gripper_left_open_pos",  0);
+  this->declare_parameter<int>("gripper_right_close_pos", 6500);
+  this->declare_parameter<int>("gripper_right_open_pos",  0);
+  this->declare_parameter<int>("lifting_up_pos",   20000);
+  this->declare_parameter<int>("lifting_down_pos",     0);
   this->declare_parameter<double>("goal_yaw", 0.0);
   this->declare_parameter<double>("pickup_offset_x", 0.0);
   this->declare_parameter<double>("pickup_offset_y", 0.0);
@@ -34,10 +35,12 @@ ObjectTaskExecutorNode::ObjectTaskExecutorNode()
   this->declare_parameter<double>("actuator_settle_seconds", 1.0);
 
   map_frame_ = this->get_parameter("map_frame").as_string();
-  gripper_close_command_ = this->get_parameter("gripper_close_command").as_string();
-  gripper_open_command_ = this->get_parameter("gripper_open_command").as_string();
-  platform_up_command_ = this->get_parameter("platform_up_command").as_string();
-  platform_down_command_ = this->get_parameter("platform_down_command").as_string();
+  gripper_left_close_pos_ = this->get_parameter("gripper_left_close_pos").as_int();
+  gripper_left_open_pos_ = this->get_parameter("gripper_left_open_pos").as_int();
+  gripper_right_close_pos_ = this->get_parameter("gripper_right_close_pos").as_int();
+  gripper_right_open_pos_ = this->get_parameter("gripper_right_open_pos").as_int();
+  lifting_up_pos_ = this->get_parameter("lifting_up_pos").as_int();
+  lifting_down_pos_ = this->get_parameter("lifting_down_pos").as_int();
   goal_yaw_ = this->get_parameter("goal_yaw").as_double();
   pickup_offset_x_ = this->get_parameter("pickup_offset_x").as_double();
   pickup_offset_y_ = this->get_parameter("pickup_offset_y").as_double();
@@ -69,14 +72,9 @@ ObjectTaskExecutorNode::ObjectTaskExecutorNode()
       10,
       std::bind(&ObjectTaskExecutorNode::robotPoseCallback, this, std::placeholders::_1));
 
-  gripper_command_pub_ =
-    this->create_publisher<std_msgs::msg::String>(
-      this->get_parameter("gripper_command_topic").as_string(),
-      10);
-
-  platform_command_pub_ =
-    this->create_publisher<std_msgs::msg::String>(
-      this->get_parameter("platform_command_topic").as_string(),
+  set_pos_pub_ =
+    this->create_publisher<std_msgs::msg::Int32>(
+      this->get_parameter("set_pos_topic").as_string(),
       10);
 
   status_pub_ =
@@ -199,10 +197,10 @@ void ObjectTaskExecutorNode::executeCommand(
     return;
   }
 
-  publishActuatorCommand(gripper_command_pub_, gripper_close_command_, "Greifer schliessen");
+  publishGripperClose();
   sleepForActuator();
 
-  publishActuatorCommand(platform_command_pub_, platform_up_command_, "Plattform anheben");
+  publishSetPos(3, lifting_up_pos_, "Plattform anheben");
   sleepForActuator();
   object_picked_up_ = true;
 
@@ -228,10 +226,10 @@ void ObjectTaskExecutorNode::executeCommand(
     return;
   }
 
-  publishActuatorCommand(platform_command_pub_, platform_down_command_, "Plattform absenken");
+  publishSetPos(3, lifting_down_pos_, "Plattform absenken");
   sleepForActuator();
 
-  publishActuatorCommand(gripper_command_pub_, gripper_open_command_, "Greifer oeffnen");
+  publishGripperOpen();
   object_picked_up_ = false;
 
   publishStatus("done");
@@ -379,15 +377,25 @@ geometry_msgs::msg::PoseStamped ObjectTaskExecutorNode::makeGoalPose(
   return pose;
 }
 
-void ObjectTaskExecutorNode::publishActuatorCommand(
-  const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr & publisher,
-  const std::string & command,
-  const std::string & label)
+// Codierung: motor * 100000 + encoderPos + 50000  (motor: 1=GripL, 2=GripR, 3=Lift)
+void ObjectTaskExecutorNode::publishSetPos(int32_t motor, int32_t encoder_pos, const std::string & label)
 {
-  std_msgs::msg::String msg;
-  msg.data = command;
-  publisher->publish(msg);
-  RCLCPP_INFO(this->get_logger(), "%s: %s", label.c_str(), command.c_str());
+  std_msgs::msg::Int32 msg;
+  msg.data = motor * 100000 + encoder_pos + 50000;
+  set_pos_pub_->publish(msg);
+  RCLCPP_INFO(this->get_logger(), "%s: M%d→%d", label.c_str(), (int)motor, (int)encoder_pos);
+}
+
+void ObjectTaskExecutorNode::publishGripperClose()
+{
+  publishSetPos(1, gripper_left_close_pos_,  "Greifer Links schliessen");
+  publishSetPos(2, gripper_right_close_pos_, "Greifer Rechts schliessen");
+}
+
+void ObjectTaskExecutorNode::publishGripperOpen()
+{
+  publishSetPos(1, gripper_left_open_pos_,  "Greifer Links oeffnen");
+  publishSetPos(2, gripper_right_open_pos_, "Greifer Rechts oeffnen");
 }
 
 void ObjectTaskExecutorNode::publishStatus(const std::string & status)
@@ -423,10 +431,10 @@ void ObjectTaskExecutorNode::dropCurrentObjectAtCurrentPose()
     pose = latest_robot_pose_;
   }
 
-  publishActuatorCommand(platform_command_pub_, platform_down_command_, "Plattform absenken");
+  publishSetPos(3, lifting_down_pos_, "Plattform absenken");
   sleepForActuator();
 
-  publishActuatorCommand(gripper_command_pub_, gripper_open_command_, "Greifer oeffnen");
+  publishGripperOpen();
   sleepForActuator();
   object_picked_up_ = false;
 

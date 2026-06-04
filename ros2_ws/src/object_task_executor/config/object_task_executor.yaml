@@ -7,14 +7,19 @@ object_task_executor_node:
     command_topic: "/object_place_command"
 
     # Diese Topics muessen zur ESP32-/micro-ROS-Firmware passen.
-    gripper_command_topic: "/gripper/command"
-    platform_command_topic: "/platform/command"
+    set_pos_topic: "/esp32_gripper/set_pos"
     status_topic: "/object_task_executor/status"
 
-    gripper_close_command: "close"
-    gripper_open_command: "open"
-    platform_up_command: "up"
-    platform_down_command: "down"
+    # Encoder-Endwerte (Codierung intern: motor*100000 + pos + 50000)
+    # Greifer Links (Motor 1, Encoder -6500..0)
+    gripper_left_close_pos: -6500
+    gripper_left_open_pos: 0
+    # Greifer Rechts (Motor 2, Encoder 0..6500)
+    gripper_right_close_pos: 6500
+    gripper_right_open_pos: 0
+    # Lifting (Motor 3, Encoder 0..20000)
+    lifting_up_pos: 20000
+    lifting_down_pos: 0
 
     # Offsets in map-Koordinaten, falls der Roboter nicht exakt auf Objekt/Ecke fahren darf.
     pickup_offset_x: 0.0

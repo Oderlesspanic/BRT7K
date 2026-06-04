@@ -20,6 +20,7 @@
 #include "interfaces/msg/object_place_command.hpp"
 #include "interfaces/srv/update_object_pose.hpp"
 #include "nav2_msgs/action/navigate_to_pose.hpp"
+#include "std_msgs/msg/int32.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "vision_msgs/msg/detection3_d.hpp"
@@ -70,10 +71,9 @@ private:
     double offset_x,
     double offset_y) const;
 
-  void publishActuatorCommand(
-    const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr & publisher,
-    const std::string & command,
-    const std::string & label);
+  void publishSetPos(int32_t motor, int32_t encoder_pos, const std::string & label);
+  void publishGripperClose();
+  void publishGripperOpen();
 
   void publishStatus(const std::string & status);
 
@@ -95,8 +95,7 @@ private:
   rclcpp::Subscription<interfaces::msg::ObjectPlaceCommand>::SharedPtr command_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr robot_pose_sub_;
 
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr gripper_command_pub_;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr platform_command_pub_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr set_pos_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr cancel_task_service_;
 
@@ -118,10 +117,12 @@ private:
   GoalHandleNavigateToPose::SharedPtr active_goal_handle_;
 
   std::string map_frame_;
-  std::string gripper_close_command_;
-  std::string gripper_open_command_;
-  std::string platform_up_command_;
-  std::string platform_down_command_;
+  int32_t gripper_left_close_pos_;
+  int32_t gripper_left_open_pos_;
+  int32_t gripper_right_close_pos_;
+  int32_t gripper_right_open_pos_;
+  int32_t lifting_up_pos_;
+  int32_t lifting_down_pos_;
 
   double goal_yaw_;
   double pickup_offset_x_;

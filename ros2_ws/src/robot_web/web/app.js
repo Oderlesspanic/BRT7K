@@ -467,10 +467,10 @@ const cmdVelNavTopic = new ROSLIB.Topic({
   messageType: "geometry_msgs/Twist"
 });
 
-const gripperCommandTopic = new ROSLIB.Topic({
+const gripperSetPosTopic = new ROSLIB.Topic({
   ros: ros,
-  name: "/esp32_gripper/command",
-  messageType: "std_msgs/Float32"
+  name: "/esp32_gripper/set_pos",
+  messageType: "std_msgs/Int32"
 });
 
 const gripperManualTopic = new ROSLIB.Topic({
@@ -544,11 +544,14 @@ document.getElementById("btnStop").addEventListener("click", async () => {
   publishEmergencyStop();
 });
 
-function sendGripperGap(gapMeters) {
+// Codierung: motor * 100000 + encoderPos + 50000  (motor: 1=GripL, 2=GripR, 3=Lift)
+function encodeSetPos(motor, encoderPos) {
+  return motor * 100000 + encoderPos + 50000;
+}
+
+function sendGripperSetPos(motor, encoderPos) {
   if (!manualMode) return;
-  gripperCommandTopic.publish(new ROSLIB.Message({
-    data: gapMeters
-  }));
+  gripperSetPosTopic.publish(new ROSLIB.Message({ data: encodeSetPos(motor, encoderPos) }));
 }
 
 function sendGripperManual(command, force = false) {
@@ -559,32 +562,26 @@ function sendGripperManual(command, force = false) {
 }
 
 btnGripOpen.addEventListener("click", () => {
-  sendGripperGap(0.08);
+  sendGripperSetPos(1, 0);     // GripL → 0
+  sendGripperSetPos(2, 0);     // GripR → 0
 });
 
 btnGripClose.addEventListener("click", () => {
-  sendGripperGap(0.0);
+  sendGripperSetPos(1, -6500); // GripL → -6500
+  sendGripperSetPos(2, 6500);  // GripR → 6500
 });
 
-bindHoldButton(btnLiftUp, 3);
-bindHoldButton(btnLiftDown, 4);
+btnLiftUp.addEventListener("click", () => {
+  sendGripperSetPos(3, 20000); // Lift → 20000
+});
+
+btnLiftDown.addEventListener("click", () => {
+  sendGripperSetPos(3, 0);     // Lift → 0
+});
 
 btnGripperStop.addEventListener("click", () => {
   sendGripperManual(0);
 });
-
-function bindHoldButton(button, command) {
-  button.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    sendGripperManual(command);
-  });
-
-  ["pointerup", "pointerleave", "pointercancel"].forEach((eventName) => {
-    button.addEventListener(eventName, () => {
-      sendGripperManual(0);
-    });
-  });
-}
 
 // ----------------------------------------------------
 // Modus: /robot_mode std_msgs/String

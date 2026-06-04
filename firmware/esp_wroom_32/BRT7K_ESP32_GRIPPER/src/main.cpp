@@ -126,8 +126,8 @@ const int     LIFT_UP_SPD   = 220;   // Fixgeschwindigkeit Lift beim Heben (70-2
 // Kraft-Erkennung → Geschwindigkeits-Boost
 // left_weight > +THRESHOLD oder right_weight < -THRESHOLD → Boost aktiv
 int32_t FORCE_THRESHOLD = 50000;   // einstellbar via /esp32_gripper/set_threshold   (10000-300000)
-int     FORCE_BOOST_SPD = 70;     // einstellbar via /esp32_gripper/set_force_boost  (70-255)
-const int     FORCE_BOOST_SPD_EMPTY = 130; // for empty mate (just to reach threshold)
+int     FORCE_BOOST_SPD = 190;     // einstellbar via /esp32_gripper/set_force_boost  (70-255)
+const int     FORCE_BOOST_SPD_EMPTY = 190; // for empty mate (just to reach threshold)
 
 // GRIP_L: pos. Speed → Encoder sinkt → Dir -1; GRIP_R und LIFT: Dir +1
 const int8_t  posCtrlDir[3]    = { -1, 1, 1 };

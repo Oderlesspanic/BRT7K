@@ -5,7 +5,7 @@ frontier_explorer_node:
     explore_period: 5.0
 
     goal_clearance_radius: 0.45
-    goal_search_radius: 1.50
+    goal_search_radius: 1.00
 
     min_frontier_cluster_size: 8
     retry_delay_after_abort: 15.0
