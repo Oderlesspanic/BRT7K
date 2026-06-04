@@ -6,11 +6,11 @@ import os
 
 
 def generate_launch_description():
-    wheel_odometry_dir = get_package_share_directory("odometry")
-    wheel_odometry_launch = os.path.join(
-        wheel_odometry_dir,
+    imu_dir = get_package_share_directory("imu")
+    imu_launch = os.path.join(
+        imu_dir,
         "launch",
-        "wheel_odometry.launch.py"
+        "imu.launch.py"
     )
 
     ekf_dir = get_package_share_directory("ekf")
@@ -23,7 +23,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(wheel_odometry_launch)
+            PythonLaunchDescriptionSource(imu_launch)
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ekf_launch)
